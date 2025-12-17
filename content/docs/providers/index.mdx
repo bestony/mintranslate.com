@@ -1,0 +1,32 @@
+---
+title: Providers
+description: Choose and configure OpenAI / Anthropic / Gemini / Ollama.
+---
+
+A **Provider** is the model backend MinTranslate sends your translation requests to.
+
+MinTranslate supports:
+
+- OpenAI
+- Anthropic (Claude)
+- Google Gemini
+- Ollama (local)
+
+## How to choose
+
+Use this as a quick mental model:
+
+- Want **local-first** and no API key: choose **Ollama**
+- Want **fast setup** with a cloud model: choose **OpenAI / Anthropic / Gemini**
+- Want to compare outputs: add multiple providers and switch the default
+
+## Configure & manage
+
+All provider settings are stored in your browser (localStorage). You can add multiple providers and set one as the default.
+
+## Provider-specific guides
+
+- [OpenAI](./openai)
+- [Anthropic](./anthropic)
+- [Google Gemini](./gemini)
+- [Ollama](./ollama)

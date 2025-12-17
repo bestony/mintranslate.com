@@ -1,0 +1,32 @@
+---
+title: Providers
+description: 选择并配置 OpenAI / Anthropic / Gemini / Ollama。
+---
+
+在 MinTranslate 里，**Provider** 指“翻译请求要发往的模型服务端/本地推理服务”。
+
+当前支持：
+
+- OpenAI
+- Anthropic（Claude）
+- Google Gemini
+- Ollama（本地）
+
+## 怎么选？
+
+可以用下面的 3 条快速决策：
+
+- 想 **本地优先**、不想用 API Key：选 **Ollama**
+- 想 **开箱即用**、直接用云端大模型：选 **OpenAI / Anthropic / Gemini**
+- 想对比不同模型效果：新增多个 Provider，随时切换默认
+
+## 配置与管理
+
+Provider 配置会保存在本地浏览器（localStorage）。你可以配置多个 Provider，并设置其中一个为默认。
+
+## 分 Provider 说明
+
+- [OpenAI](./openai)
+- [Anthropic](./anthropic)
+- [Google Gemini](./gemini)
+- [Ollama](./ollama)

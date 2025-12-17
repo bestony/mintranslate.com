@@ -1,0 +1,38 @@
+---
+title: MinTranslate
+description: A minimal AI translator supporting OpenAI / Anthropic / Gemini / Ollama.
+---
+
+MinTranslate is a minimal AI translator with a **bring-your-own-model** workflow: you configure a provider (API key or local Ollama), and MinTranslate focuses on a clean translation experience.
+
+## Quick start
+
+1. Open `Settings` (`/settings`) and add a Provider (OpenAI / Anthropic / Gemini / Ollama).
+2. Set it as the default Provider.
+3. Go back to Home, paste text on the left, and get the translation on the right.
+
+Read the step-by-step guide: [Getting Started](./getting-started)
+
+## What you can do
+
+- **Multiple providers**: Add multiple Providers and switch the default anytime.  
+  See: [Providers](./providers)
+- **Customize system prompt**: Control tone, formatting, terminology rules.  
+  See: [System Prompt](./guides/system-prompt)
+- **Local translation history**: Saved in your browser; export as JSON.  
+  See: [History & Export](./guides/history-and-export)
+
+## Privacy & storage (high level)
+
+- Translation requests are sent from **your browser** to the Provider you configured.
+- Provider config, system prompt, and history are stored in your browser storage (localStorage).
+
+More details: [Privacy & Storage](./guides/privacy-and-storage)
+
+## FAQ / troubleshooting
+
+If translation doesn’t start, or you see request errors, check: [FAQ](./faq)
+
+## Contributing / development
+
+If you want to help improve MinTranslate, start here: [Contributing](./development/contributing)

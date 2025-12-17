@@ -1,0 +1,47 @@
+---
+title: 常见问题（FAQ）
+description: 常见用法与排障清单。
+---
+
+## 为什么翻译不触发？
+
+最常见的原因：
+
+- 没有配置 **默认 Provider**
+- 默认 Provider 缺少 **API Key**（云端 Provider）
+- 输入框只有空白字符
+
+建议按顺序检查：
+
+1. 去 `/settings` 新增 Provider
+2. 保存后设为默认
+3. 回到首页重新输入/粘贴内容
+
+## 如何“立即翻译”？
+
+- 点击“立即翻译”
+- 快捷键：`⌘ + Enter` / `Ctrl + Enter`
+
+## 我的 API Key 存在哪里？
+
+Provider 配置（包含 API Key）保存在浏览器 localStorage：`mintranslate.aiProviders`。
+
+详情见：[隐私与本地存储](./guides/privacy-and-storage)
+
+## Ollama 连接不上怎么办？
+
+请检查：
+
+- Ollama 是否正在运行
+- Host 是否正确（默认 `http://localhost:11434`）
+- Model 是否已拉取（执行 `ollama pull <model>`）
+
+也可以用命令确认服务是否可访问（可选）：
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
+## 可以跨设备同步配置/历史吗？
+
+目前没有内置同步。你可以在历史页导出 JSON 作为备份，但暂不支持导入。

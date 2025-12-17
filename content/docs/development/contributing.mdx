@@ -1,0 +1,80 @@
+---
+title: Contributing
+description: Set up the repo locally, run the dev server, and submit changes.
+---
+
+This page helps you get a local dev environment running and explains how to contribute to MinTranslate.
+
+## Prerequisites
+
+- [Bun](https://bun.sh/) installed
+- A modern browser (for UI testing)
+
+## Local setup
+
+```bash
+# 1) Clone
+git clone <repo-url>
+cd <repo-dir>
+
+# 2) Install deps
+bun install
+
+# 3) Start dev server
+bun run dev
+```
+
+Then open `http://localhost:3000`.
+
+## Useful scripts
+
+- `bun run dev`: start Vite dev server (port `3000`)
+- `bun run build`: production build
+- `bun run preview`: preview production build locally
+- `bun run test`: run Vitest
+- `bun run lint` / `bun run format` / `bun run check`: Biome lint/format/check
+
+## Project structure (quick map)
+
+- `src/`: application code (React + TanStack Router/Start)
+	- `src/routes/`: file-based routes (UI routes and server handlers in `src/routes/api/`)
+	- `src/components/`: shared UI components (`src/components/ui/` contains UI primitives)
+	- `src/stores/`: client state (TanStack Store)
+	- `src/db/`: local persistence (TanStack React DB / localStorage)
+	- `src/locales/`: i18n dictionaries (e.g. `en.ts`, `zh.ts`)
+	- `src/lib/`: utilities and helpers
+- `content/docs/`: documentation (MDX, Fumadocs)
+- `public/`: static assets
+
+Generated/ignored (don’t commit): `.tanstack/`, `.output/`, `.source/`, `dist/`
+
+## Code style & conventions
+
+- TypeScript is `strict`: avoid `any` and keep types explicit at module boundaries.
+- Biome is the source of truth for formatting (tabs + double quotes).
+- Prefer path-alias imports: `@/…` maps to `src/…`.
+- Don’t edit generated files (notably `src/routeTree.gen.ts`).
+
+## Working on docs
+
+- Docs live in `content/docs/` as `*.mdx`.
+- Most pages have both English and Chinese versions: `page.mdx` and `page.zh.mdx`.
+	- If you update one, please update the other, keeping structure and links in sync.
+
+## Security / privacy notes for contributors
+
+- Never commit API keys or secrets.
+- Provider keys are configured in-app and stored in browser `localStorage` (local to your browser/device).
+
+## Submitting changes
+
+Recommended workflow:
+
+1. Create a new branch for your change.
+2. Keep changes small and focused.
+3. Run `bun run test` and (if relevant) `bun run build`.
+4. Open a PR with:
+	- a short description
+	- steps to verify (e.g. `bun run dev`)
+	- screenshots for UI changes
+

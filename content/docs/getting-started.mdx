@@ -1,0 +1,52 @@
+---
+title: Getting Started
+description: Configure a Provider and complete your first translation in ~30 seconds.
+---
+
+This guide walks you through the minimal setup needed to translate with MinTranslate.
+
+## Prerequisites
+
+Pick one:
+
+- **Cloud provider**: an API key for OpenAI / Anthropic / Gemini
+- **Local provider**: Ollama running on your machine
+
+## 1) Add a Provider
+
+1. Open the Settings page: `/settings`
+2. In **AI Providers**, click **Add**
+3. Choose a provider type and fill in:
+   - **Name**: anything you like
+   - **Model**: the model name you want to use
+   - **API Key** (for OpenAI / Anthropic / Gemini)
+   - **Ollama Host** (optional, for Ollama; default is `http://localhost:11434`)
+4. Save, then set it as the **Default** provider
+
+Provider details: [Providers](./providers)
+
+## 2) Translate
+
+Go back to Home and paste text on the left.
+
+- Translation runs automatically after you stop typing briefly
+- You can also click **Translate now**
+- Shortcut: `⌘ + Enter` / `Ctrl + Enter`
+
+## 3) Swap translation direction
+
+MinTranslate currently supports **Chinese ↔ English**.
+
+Use the **Swap languages** button to switch direction (it also swaps the left/right text).
+
+## 4) View history / export
+
+- Home shows recent history
+- Full history page: `/history`
+- Export as JSON from the history page
+
+Guide: [History & Export](./guides/history-and-export)
+
+## If something doesn’t work
+
+Start here: [FAQ](./faq)

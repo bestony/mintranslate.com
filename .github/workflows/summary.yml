@@ -1,0 +1,42 @@
+name: Summarize new issues
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      models: read
+
+    steps:
+      - name: Run AI inference
+        id: inference
+        uses: actions/ai-inference@v1
+        with:
+          prompt: |
+            Summarize the following GitHub issue in one paragraph:
+            Title: ${{ github.event.issue.title }}
+            Body: ${{ github.event.issue.body }}
+
+      - name: Comment with AI summary
+        uses: actions/github-script@v7
+        env:
+          SUMMARY: ${{ steps.inference.outputs.response }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const summary = (process.env.SUMMARY ?? "").trim();
+            if (!summary) {
+              core.warning("No AI summary was returned, skipping comment.");
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: summary,
+            });

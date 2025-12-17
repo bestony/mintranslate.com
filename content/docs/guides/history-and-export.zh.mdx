@@ -1,0 +1,38 @@
+---
+title: 翻译历史与导出
+description: 查看本地翻译记录、导出 JSON、清空数据。
+---
+
+MinTranslate 会把翻译历史 **保存在本地浏览器**（localStorage）。
+
+## 在哪里查看？
+
+- 首页会展示一个“最近记录”区域
+- 全部记录页：`/history`
+
+## 什么时候会写入历史？
+
+每次翻译 **成功返回** 后，会把该条记录写入本地历史。
+
+## 导出 JSON
+
+在 `/history` 页面点击“导出 JSON”，会下载一个包含全部记录的文件。
+
+单条记录结构（示例）：
+
+```json
+{
+  "id": "…",
+  "createdAt": 1730000000000,
+  "sourceLang": "zh",
+  "targetLang": "en",
+  "sourceText": "…",
+  "translatedText": "…"
+}
+```
+
+## 清空历史
+
+你可以在 `/history` 直接清空历史记录。该操作只影响当前浏览器中的本地数据。
+
+如果你更关心隐私/数据位置： [隐私与本地存储](./privacy-and-storage)

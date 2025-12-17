@@ -1,0 +1,32 @@
+---
+title: OpenAI
+description: Configure OpenAI (or an OpenAI-compatible endpoint) in MinTranslate.
+---
+
+## When to use
+
+- You already have an OpenAI API key
+- You want to use an OpenAI-compatible Base URL (optional)
+
+## Fields in MinTranslate
+
+- **Name**: for your own reference
+- **Model**: the model name you want to call
+- **API Key**: required
+- **Base URL** (optional): leave empty to use the default
+
+Example model names you can start with:
+
+- `gpt-4.1-mini` (default in this project)
+
+## Tips
+
+- Treat API keys as secrets; MinTranslate stores them in browser localStorage.
+- If requests fail, double check the model name and Base URL.
+
+## Troubleshooting
+
+- **“OpenAI API key is not configured”**: you haven’t saved an API key for the default provider.
+- **Request failed**: verify your key, model, and network; if you set a Base URL, make sure it’s correct and reachable.
+
+See also: [FAQ](../faq)

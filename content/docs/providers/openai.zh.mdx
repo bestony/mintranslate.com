@@ -1,0 +1,32 @@
+---
+title: OpenAI
+description: 在 MinTranslate 中配置 OpenAI（或 OpenAI 兼容接口）。
+---
+
+## 适用场景
+
+- 你已经有 OpenAI 的 API Key
+- 你需要自定义 **Base URL**（例如使用 OpenAI 兼容接口/自建网关）
+
+## 在 MinTranslate 里需要填写什么？
+
+- **名称**：用于区分多个 Provider（随便起）
+- **Model**：你要调用的模型名称
+- **API Key**：必填
+- **Base URL（可选）**：留空使用默认；填入后会改为请求该地址
+
+可用于快速上手的模型示例：
+
+- `gpt-4.1-mini`（项目默认值）
+
+## 使用建议
+
+- API Key 会存放在浏览器 localStorage，建议不要在公共/共享电脑上配置。
+- 如果你用的是 OpenAI 兼容接口，确保该服务可信，并了解它会如何记录你的请求。
+
+## 常见问题
+
+- **提示 “OpenAI API Key 未配置”**：默认 Provider 没有保存 API Key，去 `/settings` 补齐即可。
+- **AI 请求失败/无响应**：检查 Model 名称是否存在、Base URL 是否可访问、网络是否通畅。
+
+更多排障见：[常见问题（FAQ）](../faq)

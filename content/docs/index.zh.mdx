@@ -1,0 +1,38 @@
+---
+title: MinTranslate
+description: 一个极简主义的 AI 翻译应用（OpenAI / Anthropic / Gemini / Ollama）
+---
+
+MinTranslate 是一个极简 AI 翻译器：你配置自己的模型 Provider（API Key 或本地 Ollama），MinTranslate 提供尽可能轻量、清晰的翻译体验。
+
+## 30 秒快速开始
+
+1. 打开[设置页](/settings)，新增一个模型供应商（OpenAI / Anthropic / Gemini / Ollama）。
+2. 将它设为默认模型供应商。
+3. 回到首页，在左侧输入文本，右侧会出现译文。
+
+详细步骤见：[快速开始](./getting-started)
+
+## 特性
+
+- **BYOM（Bring your own model）**：你可以自由选择与管理 Provider（OpenAI / Anthropic / Gemini / Ollama）。
+- **System prompt 可配置**：控制翻译风格、术语、格式保留等。
+- **数据本地存储**：Provider 配置、system prompt、翻译历史均保存在本地浏览器（localStorage），可随时导出/清空。
+
+## 推荐阅读路径（按你想解决的问题）
+
+- 我想先用起来： [快速开始](./getting-started)
+- 我想选模型/换服务商： [Providers](./providers)
+- 我想让翻译更“像我写的”： [System prompt](./guides/system-prompt)
+- 我想查看/导出翻译记录： [翻译历史与导出](./guides/history-and-export)
+- 我关心隐私、数据存储位置： [隐私与本地存储](./guides/privacy-and-storage)
+- 我遇到报错或翻译不触发： [常见问题（FAQ）](./faq)
+
+## 隐私与数据
+
+- 翻译请求会从 **你的浏览器** 直接发送到你配置的模型供应商（MinTranslate 不代收、不转发、不保存你的翻译内容）。
+- 模型供应商配置、system prompt、翻译历史会保存在你的浏览器 localStorage（可在应用内清空，或在浏览器中清除站点数据）。
+
+## 参与开发 / 贡献
+
+如果你想参与开发并贡献改进：从这里开始 [参与开发](./development/contributing)

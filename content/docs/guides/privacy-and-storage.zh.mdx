@@ -1,0 +1,42 @@
+---
+title: 隐私与本地存储
+description: 了解请求会发送什么、哪些数据保存在本地，以及如何清理。
+---
+
+## 数据流（翻译请求）
+
+MinTranslate 会从 **你的浏览器** 直接向你配置的 Provider 发起翻译请求。
+
+通常会包含：
+
+- 你输入的原文
+- 你设置的 system prompt
+- 翻译方向（中文 ↔ 英文）
+
+> 说明：MinTranslate 不会代收/代转发你的翻译内容，也不会在服务器端保存翻译文本。
+
+## 本地会保存哪些数据？
+
+MinTranslate 使用浏览器 localStorage 保存配置与历史记录（不同浏览器/设备之间不会自动同步）。
+
+常见的 localStorage key（便于你排查/清理）：
+
+- `mintranslate.aiProviders`：全部 Provider 配置（包含 API Key）
+- `mintranslate.aiDefaultProviderId`：默认 Provider 的 id
+- `mintranslate.appSettings`：应用设置（例如 system prompt）
+- `mintranslate.translateHistory`：翻译历史记录
+- `mintranslate.uiLanguage`：界面语言偏好
+
+
+## 如何清理数据？
+
+你可以按需选择：
+
+- 在 `/settings` 删除 Provider（仅影响本地）
+- 在 `/history` 清空历史记录
+- 在浏览器中对该站点执行“清除站点数据”，一次性清掉全部 localStorage
+
+## 安全建议
+
+- 不建议在共享/公共电脑中配置云端 Provider 的 API Key。
+- 对敏感内容，建议使用独立浏览器 Profile，或使用 Ollama 走本地模型。

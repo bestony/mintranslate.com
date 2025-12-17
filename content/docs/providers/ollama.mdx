@@ -1,0 +1,31 @@
+---
+title: Ollama
+description: Use a local model with Ollama (no API key required).
+---
+
+## When to use
+
+- You want local-first translation
+- You don’t want to store a cloud API key in the browser
+
+## Prerequisites
+
+1. Install and run Ollama on your machine
+2. Pull a model, for example:
+
+```bash
+ollama pull llama3
+```
+
+## Fields in MinTranslate
+
+- **Name**
+- **Model**: for example `llama3`
+- **Ollama Host** (optional): defaults to `http://localhost:11434`
+
+## Troubleshooting
+
+- **Connection refused / timeout**: make sure Ollama is running and the host is correct.
+- **Model not found**: pull the model first with `ollama pull ...`.
+
+See also: [FAQ](../faq)

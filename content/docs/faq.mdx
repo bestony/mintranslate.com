@@ -1,0 +1,41 @@
+---
+title: FAQ
+description: Common questions and quick troubleshooting for MinTranslate.
+---
+
+## Why doesn’t translation start?
+
+Most commonly:
+
+- You haven’t configured a **default Provider**
+- The default Provider is missing an **API key** (cloud providers)
+- The input is empty or whitespace
+
+Go to `/settings`, add a Provider, and set it as default.
+
+## What languages are supported?
+
+Currently: **Chinese ↔ English** only.
+
+## How do I translate immediately?
+
+- Click **Translate now**
+- Shortcut: `⌘ + Enter` / `Ctrl + Enter`
+
+## Where is my API key stored?
+
+In your browser localStorage under `mintranslate.aiProviders`.
+
+See: [Privacy & Storage](./guides/privacy-and-storage)
+
+## Ollama can’t connect
+
+Check:
+
+- Ollama is running
+- Host is correct (default `http://localhost:11434`)
+- The model exists (run `ollama pull <model>`)
+
+## Can I sync settings/history across devices?
+
+Not built-in. You can export history as JSON, but importing isn’t supported yet.

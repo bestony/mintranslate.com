@@ -1,0 +1,78 @@
+---
+title: System Prompt
+description: Control translation style, formatting, and terminology with a system prompt.
+---
+
+MinTranslate sends your **System Prompt** as the `system` message for every translation request.
+
+## What it affects
+
+- Output tone (formal / casual)
+- Whether Markdown formatting is preserved
+- Terminology rules (glossary)
+- Whether the model adds explanations (you usually want to forbid this)
+
+## Default prompt (in this project)
+
+```text
+你是一个翻译引擎。
+你会将用户输入的文本从指定语言翻译成目标语言。
+要求：
+1) 只输出译文，不要解释，不要加引号，不要添加额外内容。
+2) 保留原文的换行与格式。
+```
+
+## Ready-to-copy templates
+
+### 1) Strict “translation only” (recommended)
+
+```text
+You are a translation engine.
+Translate the user text into the target language.
+Requirements:
+1) Output translation only. No explanations. No quotes. No extra content.
+2) Preserve line breaks and formatting.
+```
+
+### 2) Technical docs / Markdown friendly
+
+```text
+You are a translation engine.
+Translate the user text into the target language.
+Requirements:
+- Preserve Markdown structure, headings, lists, and code blocks.
+- Do not translate code, identifiers, or URLs unless explicitly asked.
+- Output translation only.
+```
+
+### 3) UI strings / i18n placeholders
+
+```text
+You are a translation engine.
+Translate the user text into the target language.
+Requirements:
+- Preserve placeholders exactly: {name}, {{count}}, %s, $1, :id, etc.
+- Do not introduce new placeholders or change placeholder positions.
+- Keep punctuation style consistent.
+- Output translation only.
+```
+
+### 4) Glossary / terminology (keep terms consistent)
+
+```text
+You are a translation engine.
+Translate the user text into the target language.
+Requirements:
+1) Output translation only.
+2) Follow this glossary (highest priority):
+- Provider -> Provider (do not translate)
+- system prompt -> system prompt (do not translate)
+- localStorage -> localStorage
+```
+
+## Tips for better results
+
+- Keep prompts short and avoid contradictions — the more “rule-like” they are, the more stable output tends to be.
+- If the model still adds explanations or quotes, repeat “Output translation only”, “No quotes”, and “No extra content”.
+
+Next: [Providers](../providers) · [FAQ](../faq)

@@ -1,0 +1,38 @@
+---
+title: History & Export
+description: View local translation history, export as JSON, and clear data.
+---
+
+MinTranslate stores translation history **locally in your browser** (`localStorage`).
+
+## Where to view
+
+- Home shows a small “recent history” section
+- Full history page: `/history`
+
+## When items are saved
+
+History is written after a translation succeeds.
+
+## Export as JSON
+
+On `/history`, click **Export JSON** to download a file containing all records.
+
+Record shape:
+
+```json
+{
+  "id": "…",
+  "createdAt": 1730000000000,
+  "sourceLang": "zh",
+  "targetLang": "en",
+  "sourceText": "…",
+  "translatedText": "…"
+}
+```
+
+## Clear history
+
+You can clear history from `/history`. This only affects local data in your current browser.
+
+For privacy and where data is stored: [Privacy & Storage](./privacy-and-storage)

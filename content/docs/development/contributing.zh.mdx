@@ -1,0 +1,80 @@
+---
+title: 参与开发
+description: 本地启动项目、运行测试，并提交贡献的说明。
+---
+
+本页用于帮助你快速在本地跑起来开发环境，并了解如何为 MinTranslate 做贡献。
+
+## 准备工作
+
+- 已安装 [Bun](https://bun.sh/)
+- 一个现代浏览器（用于本地验证 UI）
+
+## 本地启动
+
+```bash
+# 1）克隆仓库
+git clone <repo-url>
+cd <repo-dir>
+
+# 2）安装依赖
+bun install
+
+# 3）启动开发服务器
+bun run dev
+```
+
+然后打开 `http://localhost:3000`。
+
+## 常用命令
+
+- `bun run dev`：启动 Vite 开发服务器（端口 `3000`）
+- `bun run build`：生产环境构建
+- `bun run preview`：本地预览生产构建
+- `bun run test`：运行 Vitest
+- `bun run lint` / `bun run format` / `bun run check`：Biome lint/format/check
+
+## 目录结构（快速地图）
+
+- `src/`：应用代码（React + TanStack Router/Start）
+	- `src/routes/`：基于文件的路由（API/Server handler 在 `src/routes/api/`）
+	- `src/components/`：共享 UI 组件（`src/components/ui/` 是基础组件/原语）
+	- `src/stores/`：客户端状态（TanStack Store）
+	- `src/db/`：本地持久化（TanStack React DB / localStorage）
+	- `src/locales/`：i18n 字典（例如 `en.ts`, `zh.ts`）
+	- `src/lib/`：工具函数与辅助模块
+- `content/docs/`：文档（MDX，Fumadocs）
+- `public/`：静态资源
+
+生成/忽略（不要提交）：`.tanstack/`, `.output/`, `.source/`, `dist/`
+
+## 代码风格与约定
+
+- TypeScript 开启 `strict`：避免 `any`，在模块边界保持类型清晰。
+- Biome 是格式化的唯一标准（tab 缩进 + 双引号）。
+- 优先使用路径别名：`@/…` 映射到 `src/…`。
+- 不要编辑生成文件（尤其是 `src/routeTree.gen.ts`）。
+
+## 如何贡献文档
+
+- 文档位于 `content/docs/`，格式为 `*.mdx`。
+- 大多数页面都有中英文两份：`page.mdx` 与 `page.zh.mdx`。
+	- 更新其中一份时，建议同步更新另一份，保持结构与链接一致。
+
+## 安全/隐私提示（贡献者须知）
+
+- 不要提交任何 API Key 或敏感信息。
+- Provider 的 API Key 由应用内配置，保存在浏览器 `localStorage`（仅本机/本浏览器）。
+
+## 提交贡献
+
+建议流程：
+
+1. 为改动创建一个新分支。
+2. 尽量保持改动小而聚焦。
+3. 运行 `bun run test`，并在需要时运行 `bun run build` 做验证。
+4. 发起 PR，并附上：
+	- 简要说明
+	- 验证步骤（例如 `bun run dev`）
+	- UI 改动截图（如适用）
+

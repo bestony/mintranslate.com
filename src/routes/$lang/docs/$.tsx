@@ -1,0 +1,74 @@
+import browserCollections from "fumadocs-mdx:collections/browser";
+import { createFileRoute, notFound } from "@tanstack/react-router";
+import { createServerFn } from "@tanstack/react-start";
+import { useFumadocsLoader } from "fumadocs-core/source/client";
+import { DocsLayout } from "fumadocs-ui/layouts/docs";
+import {
+	DocsBody,
+	DocsDescription,
+	DocsPage,
+	DocsTitle,
+} from "fumadocs-ui/layouts/docs/page";
+import defaultMdxComponents from "fumadocs-ui/mdx";
+import { baseOptions } from "@/lib/layout.shared";
+import { source } from "@/lib/source";
+
+export const Route = createFileRoute("/$lang/docs/$")({
+	component: Page,
+	loader: async ({ params }) => {
+		const slugs = params._splat?.split("/") ?? [];
+		const data = await serverLoader({
+			data: {
+				slugs,
+				lang: params.lang,
+			},
+		});
+		await clientLoader.preload(data.path);
+		return data;
+	},
+});
+
+const serverLoader = createServerFn({
+	method: "GET",
+})
+	.inputValidator((params: { slugs: string[]; lang: string }) => params)
+	.handler(async ({ data: { slugs, lang } }) => {
+		const page = source.getPage(slugs, lang);
+		if (!page) throw notFound();
+
+		return {
+			path: page.path,
+			pageTree: await source.serializePageTree(source.getPageTree(lang)),
+		};
+	});
+
+const clientLoader = browserCollections.docs.createClientLoader({
+	component({ toc, frontmatter, default: MDX }) {
+		return (
+			<DocsPage toc={toc}>
+				<DocsTitle>{frontmatter.title}</DocsTitle>
+				<DocsDescription>{frontmatter.description}</DocsDescription>
+				<DocsBody>
+					<MDX
+						components={{
+							...defaultMdxComponents,
+						}}
+					/>
+				</DocsBody>
+			</DocsPage>
+		);
+	},
+});
+
+function Page() {
+	const { lang } = Route.useParams();
+	const data = Route.useLoaderData();
+	const { pageTree } = useFumadocsLoader(data);
+	const Content = clientLoader.getComponent(data.path);
+
+	return (
+		<DocsLayout {...baseOptions(lang)} tree={pageTree}>
+			<Content />
+		</DocsLayout>
+	);
+}

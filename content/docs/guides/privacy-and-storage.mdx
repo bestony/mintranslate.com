@@ -1,0 +1,42 @@
+---
+title: Privacy & Storage
+description: Understand what MinTranslate sends, what it stores locally, and how to clear it.
+---
+
+## Data flow (translation)
+
+MinTranslate sends translation requests from **your browser** to the Provider you configured.
+
+What is typically included:
+
+- The text you entered
+- The system prompt you set
+- The translation direction (Chinese ↔ English)
+
+> Note: MinTranslate does not proxy your translation content or store translation text on a server.
+
+## What is stored locally
+
+MinTranslate uses browser storage (`localStorage`) for configuration and history. This data is local to your current browser/device and is not automatically synced across devices.
+
+Common keys:
+
+- `mintranslate.aiProviders`: all provider configs (including API keys)
+- `mintranslate.aiDefaultProviderId`: the default provider id
+- `mintranslate.appSettings`: app settings such as system prompt
+- `mintranslate.translateHistory`: translation history items
+- `mintranslate.uiLanguage`: UI language preference
+
+## How to clear
+
+Options:
+
+- Delete providers in `/settings` (local only)
+- Clear translation history in `/history`
+- Use your browser’s “Clear site data” to remove everything
+
+## Security tips
+
+- Avoid configuring cloud provider API keys on shared/public computers.
+- For sensitive content, consider using a separate browser profile.
+- For local-only workflows, consider using Ollama (local models).

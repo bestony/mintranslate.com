@@ -1,0 +1,39 @@
+---
+title: Ollama
+description: 使用本地 Ollama 模型翻译（无需 API Key）。
+---
+
+## 适用场景
+
+- 你希望 **本地优先**（不把文本发送到云端）
+- 你不想在浏览器里保存云端 Provider 的 API Key
+
+## 准备工作
+
+1. 安装并运行 Ollama
+2. 拉取一个模型（示例）：
+
+```bash
+ollama pull llama3
+```
+
+> 提示：你在 MinTranslate 里填写的 `Model` 必须是 Ollama 已存在的模型名。
+
+## 在 MinTranslate 里需要填写什么？
+
+- **名称**
+- **Model**：例如 `llama3`（项目默认值）
+- **Ollama Host（可选）**：默认 `http://localhost:11434`
+
+你可以通过命令确认 Ollama 是否可访问（可选）：
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
+## 常见问题
+
+- **连接失败/超时**：检查 Ollama 是否在运行、Host 是否正确、是否能访问到本机 `11434` 端口。
+- **提示模型不存在**：先执行 `ollama pull <model>` 拉取模型。
+
+更多排障见：[常见问题（FAQ）](../faq)

@@ -1,0 +1,52 @@
+---
+title: 快速开始
+description: 30 秒配置 Provider，并完成第一次翻译。
+---
+
+本页会带你用最少步骤把 MinTranslate 跑起来。
+
+## 准备工作
+
+任选其一：
+
+- **云端 Provider**：OpenAI / Anthropic / Gemini 的 API Key
+- **本地 Provider**：本机已运行 Ollama
+
+## 1）新增模型供应商
+
+1. 打开[设置页](/settings)
+2. 在 **AI Providers** 区域点击 **新增**
+3. 选择模型供应商类型，并填写：
+   - **名称**：随便起（例如：我的 Gemini）
+   - **Model**：你要用的模型名称
+   - **API Key**（OpenAI / Anthropic / Gemini 需要）
+   - **Ollama Host**（Ollama 可选；默认 `http://localhost:11434`）
+4. 保存后，把该 Provider 设为 **默认**
+
+更详细的 Provider 说明见：[Providers](./providers)
+
+## 2）开始翻译
+
+回到首页，在左侧输入/粘贴文本。
+
+- 停止输入片刻后会自动翻译
+- 也可以点击 **立即翻译**
+- 快捷键：`⌘ + Enter` / `Ctrl + Enter`
+
+## 3）切换翻译方向
+
+当前仅支持 **中文 ↔ 英文**。
+
+点击“交换语言”切换方向（同时会把左右两侧文本互换）。
+
+## 4）查看历史 / 导出
+
+- 首页会展示最近记录
+- 全部记录页：`/history`
+- 在历史页可导出 JSON
+
+详细见：[翻译历史与导出](./guides/history-and-export)
+
+## 遇到问题？
+
+优先看：[常见问题（FAQ）](./faq)
