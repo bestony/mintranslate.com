@@ -2,6 +2,7 @@ import browserCollections from "fumadocs-mdx:collections/browser";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { useFumadocsLoader } from "fumadocs-core/source/client";
+import { defineI18nUI } from "fumadocs-ui/i18n";
 import { DocsLayout } from "fumadocs-ui/layouts/docs";
 import {
 	DocsBody,
@@ -10,11 +11,37 @@ import {
 	DocsTitle,
 } from "fumadocs-ui/layouts/docs/page";
 import defaultMdxComponents from "fumadocs-ui/mdx";
+import { RootProvider } from "fumadocs-ui/provider/tanstack";
+import { i18n } from "@/lib/i18n";
 import { baseOptions } from "@/lib/layout.shared";
 import { source } from "@/lib/source";
 
+import docsCss from "../../../docs.css?url";
+
+const { provider } = defineI18nUI(i18n, {
+	translations: {
+		en: {
+			displayName: "English",
+			search: "Search",
+		},
+		zh: {
+			displayName: "中文",
+			search: "搜索",
+		},
+	},
+});
+
 export const Route = createFileRoute("/$lang/docs/$")({
 	component: Page,
+	codeSplitGroupings: [["loader", "component"]],
+	head: () => ({
+		links: [
+			{
+				rel: "stylesheet",
+				href: docsCss,
+			},
+		],
+	}),
 	loader: async ({ params }) => {
 		const slugs = params._splat?.split("/") ?? [];
 		const data = await serverLoader({
@@ -65,10 +92,13 @@ function Page() {
 	const data = Route.useLoaderData();
 	const { pageTree } = useFumadocsLoader(data);
 	const Content = clientLoader.getComponent(data.path);
+	const locale = lang === "en" || lang === "zh" ? lang : i18n.defaultLanguage;
 
 	return (
-		<DocsLayout {...baseOptions(lang)} tree={pageTree}>
-			<Content />
-		</DocsLayout>
+		<RootProvider i18n={provider(locale)}>
+			<DocsLayout {...baseOptions(locale)} tree={pageTree}>
+				<Content />
+			</DocsLayout>
+		</RootProvider>
 	);
 }
