@@ -10,6 +10,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 beforeEach(() => {
 	globalThis.localStorage?.clear();
 
+	if (typeof window === "undefined") {
+		return;
+	}
+
 	Object.defineProperty(window, "matchMedia", {
 		writable: true,
 		value: (query: string) => {
@@ -19,10 +23,16 @@ beforeEach(() => {
 				media: query,
 				matches: false,
 				onchange: null,
-				addEventListener: (_event: string, cb: (event: MediaQueryListEvent) => void) => {
+				addEventListener: (
+					_event: string,
+					cb: (event: MediaQueryListEvent) => void,
+				) => {
 					listeners.add(cb);
 				},
-				removeEventListener: (_event: string, cb: (event: MediaQueryListEvent) => void) => {
+				removeEventListener: (
+					_event: string,
+					cb: (event: MediaQueryListEvent) => void,
+				) => {
 					listeners.delete(cb);
 				},
 				addListener: () => {
@@ -50,4 +60,3 @@ beforeEach(() => {
 		});
 	}
 });
-

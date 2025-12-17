@@ -7,4 +7,3 @@ describe("cn (tailwind-merge re-export)", () => {
 		expect(cn("px-2", "px-4")).toBe("px-4");
 	});
 });
-

@@ -225,7 +225,7 @@ export function hydrateProviderSettingsFromStorage() {
 		let nextProviders = storedProviders;
 		let nextDefaultId = storedDefaultId;
 
-		if (nextProviders.length && !nextDefaultId) {
+		if (!nextDefaultId) {
 			nextDefaultId = nextProviders[0]?.id ?? "";
 		}
 
@@ -727,3 +727,7 @@ export function startTranslateEffects() {
 			});
 	});
 }
+
+export const __test__ = {
+	translateViaProvider,
+} as const;

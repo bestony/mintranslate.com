@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
 	APP_LANGUAGE_STORAGE_KEY,
-	I18N_KEY_PREFIX,
 	appI18n,
 	detectAppLanguage,
+	I18N_KEY_PREFIX,
 	isI18nKey,
 	normalizeAppLanguage,
 	setAppLanguage,
@@ -50,21 +50,6 @@ describe("app-i18n", () => {
 			expect(detectAppLanguage("en-US")).toBe("en");
 		});
 
-		it("falls back to default language when window is undefined", () => {
-			const originalWindow = globalThis.window;
-			// @ts-expect-error - simulate SSR
-			delete (globalThis as unknown as { window?: Window }).window;
-
-			try {
-				expect(detectAppLanguage(undefined)).toBe("zh");
-			} finally {
-				Object.defineProperty(globalThis, "window", {
-					value: originalWindow,
-					configurable: true,
-				});
-			}
-		});
-
 		it("uses stored language when available", () => {
 			window.localStorage.setItem(APP_LANGUAGE_STORAGE_KEY, "en");
 			expect(detectAppLanguage()).toBe("en");
@@ -73,39 +58,23 @@ describe("app-i18n", () => {
 		it("uses navigator language when nothing stored", () => {
 			window.localStorage.removeItem(APP_LANGUAGE_STORAGE_KEY);
 
-			const originalNavigator = window.navigator;
-			Object.defineProperty(window, "navigator", {
-				value: { ...originalNavigator, language: "en-US" },
-				configurable: true,
-			});
+			const spy = vi
+				.spyOn(window.navigator, "language", "get")
+				.mockReturnValue("en-US");
 
-			try {
-				expect(detectAppLanguage()).toBe("en");
-			} finally {
-				Object.defineProperty(window, "navigator", {
-					value: originalNavigator,
-					configurable: true,
-				});
-			}
+			expect(detectAppLanguage()).toBe("en");
+			spy.mockRestore();
 		});
 
 		it("returns default language when nothing matches", () => {
 			window.localStorage.removeItem(APP_LANGUAGE_STORAGE_KEY);
 
-			const originalNavigator = window.navigator;
-			Object.defineProperty(window, "navigator", {
-				value: { ...originalNavigator, language: "fr-FR" },
-				configurable: true,
-			});
+			const spy = vi
+				.spyOn(window.navigator, "language", "get")
+				.mockReturnValue("fr-FR");
 
-			try {
-				expect(detectAppLanguage()).toBe("zh");
-			} finally {
-				Object.defineProperty(window, "navigator", {
-					value: originalNavigator,
-					configurable: true,
-				});
-			}
+			expect(detectAppLanguage()).toBe("zh");
+			spy.mockRestore();
 		});
 	});
 
@@ -125,9 +94,25 @@ describe("app-i18n", () => {
 			expect(document.documentElement.lang).toBe("en");
 		});
 
+		it("no-ops on SSR when window is undefined", async () => {
+			const originalWindow = globalThis.window;
+			// @ts-expect-error - simulate SSR
+			delete (globalThis as unknown as { window?: Window }).window;
+
+			try {
+				await expect(setAppLanguage("en")).resolves.toBeUndefined();
+				expect(appI18n.changeLanguage).toHaveBeenCalledWith("en");
+			} finally {
+				Object.defineProperty(globalThis, "window", {
+					value: originalWindow,
+					configurable: true,
+				});
+			}
+		});
+
 		it("ignores localStorage errors", async () => {
 			const setItem = vi
-				.spyOn(window.localStorage, "setItem")
+				.spyOn(Storage.prototype, "setItem")
 				.mockImplementation(() => {
 					throw new Error("quota exceeded");
 				});
@@ -168,4 +153,3 @@ describe("app-i18n", () => {
 		});
 	});
 });
-

@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const toast = {
+const toast = vi.hoisted(() => ({
 	success: vi.fn(),
 	error: vi.fn(),
-};
+}));
 
 vi.mock("sonner", () => ({
 	toast,
@@ -44,7 +44,11 @@ describe("copyToClipboard", () => {
 			configurable: true,
 		});
 
-		const exec = vi.spyOn(document, "execCommand").mockReturnValue(true);
+		const exec = vi.fn(() => true);
+		Object.defineProperty(document, "execCommand", {
+			value: exec,
+			configurable: true,
+		});
 
 		await copyToClipboard("hello", t);
 
@@ -57,7 +61,11 @@ describe("copyToClipboard", () => {
 			value: undefined,
 			configurable: true,
 		});
-		vi.spyOn(document, "execCommand").mockReturnValue(false);
+		const exec = vi.fn(() => false);
+		Object.defineProperty(document, "execCommand", {
+			value: exec,
+			configurable: true,
+		});
 
 		await copyToClipboard("hello", t);
 
@@ -92,4 +100,3 @@ describe("copyToClipboard", () => {
 		expect(toast.error).toHaveBeenCalledWith("common.toasts.copyFailed");
 	});
 });
-

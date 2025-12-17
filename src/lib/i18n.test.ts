@@ -8,4 +8,3 @@ describe("docs i18n", () => {
 		expect(i18n.languages).toEqual(["en", "zh"]);
 	});
 });
-

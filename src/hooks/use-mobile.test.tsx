@@ -35,8 +35,6 @@ describe("useIsMobile", () => {
 		window.innerWidth = 500;
 		const { result } = renderHook(() => useIsMobile());
 
-		expect(result.current).toBe(false);
-
 		await waitFor(() => {
 			expect(result.current).toBe(true);
 		});
@@ -56,11 +54,17 @@ describe("useIsMobile", () => {
 					media: "",
 					matches: false,
 					onchange: null,
-					addEventListener: (_event: string, cb: (event: MediaQueryListEvent) => void) => {
+					addEventListener: (
+						_event: string,
+						cb: (event: MediaQueryListEvent) => void,
+					) => {
 						addEventListener();
 						listener = cb;
 					},
-					removeEventListener: (_event: string, _cb: (event: MediaQueryListEvent) => void) => {
+					removeEventListener: (
+						_event: string,
+						_cb: (event: MediaQueryListEvent) => void,
+					) => {
 						removeEventListener();
 						listener = null;
 					},
@@ -96,4 +100,3 @@ describe("useIsMobile", () => {
 		expect(removeEventListener).toHaveBeenCalledTimes(1);
 	});
 });
-

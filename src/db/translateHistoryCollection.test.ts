@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	addTranslateHistory,
@@ -8,6 +8,10 @@ import {
 } from "@/db/translateHistoryCollection";
 
 describe("translateHistoryCollection", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
 	it("exports stable constants", () => {
 		expect(TRANSLATE_HISTORY_STORAGE_KEY).toBe("mintranslate.translateHistory");
 	});
@@ -95,5 +99,16 @@ describe("translateHistoryCollection", () => {
 			}),
 		);
 	});
-});
 
+	it("derives collection keys from item id", () => {
+		const key = translateHistoryCollection.getKeyFromItem({
+			id: "1",
+			createdAt: 1,
+			sourceLang: "zh",
+			targetLang: "en",
+			sourceText: "a",
+			translatedText: "b",
+		});
+		expect(key).toBe("1");
+	});
+});
