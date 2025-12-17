@@ -1,9 +1,11 @@
-import { type AnyFieldApi, useForm } from "@tanstack/react-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useStore } from "@tanstack/react-store";
 import { PlusIcon, TriangleAlertIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { z } from "zod";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -25,8 +27,15 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+	Form,
+	FormControl,
+	FormField,
+	FormItem,
+	FormLabel,
+	FormMessage,
+} from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
 	Select,
@@ -46,26 +55,6 @@ import {
 	translateStore,
 } from "@/stores/translateStore";
 
-function FieldInfo({ field }: { field: AnyFieldApi }) {
-	const { t } = useTranslation();
-	const errors = field.state.meta.errors
-		.map((err) => (err.startsWith("errors.") ? t(err) : err))
-		.join(", ");
-
-	return (
-		<>
-			{field.state.meta.isTouched && !field.state.meta.isValid ? (
-				<p className="mt-2 text-xs text-destructive">{errors}</p>
-			) : null}
-			{field.state.meta.isValidating ? (
-				<p className="mt-2 text-xs text-muted-foreground">
-					{t("common.status.validating")}
-				</p>
-			) : null}
-		</>
-	);
-}
-
 function normalizeProviderName(providerType: ProviderType) {
 	switch (providerType) {
 		case "openai":
@@ -78,6 +67,30 @@ function normalizeProviderName(providerType: ProviderType) {
 			return "Ollama";
 	}
 }
+
+// Zod schema for form validation
+const formSchema = z
+	.object({
+		id: z.string(),
+		type: z.enum(["openai", "anthropic", "gemini", "ollama"]),
+		name: z.string().min(1, "errors.providerNameRequired"),
+		model: z.string().min(1, "errors.modelRequired"),
+		apiKey: z.string(),
+		baseUrl: z.string(),
+	})
+	.refine(
+		(data) => {
+			// API key is not required for Ollama
+			if (data.type === "ollama") return true;
+			return data.apiKey.trim() !== "";
+		},
+		{
+			message: "errors.apiKeyRequired",
+			path: ["apiKey"],
+		},
+	);
+
+type FormValues = z.infer<typeof formSchema>;
 
 function ProviderEditorForm({
 	editingProvider,
@@ -101,7 +114,8 @@ function ProviderEditorForm({
 		editingProvider?.baseUrl ??
 		(defaultType === "ollama" ? "http://localhost:11434" : "");
 
-	const form = useForm({
+	const form = useForm<FormValues>({
+		resolver: zodResolver(formSchema),
 		defaultValues: {
 			id: editingProvider?.id ?? "",
 			type: defaultType,
@@ -110,274 +124,229 @@ function ProviderEditorForm({
 			apiKey: defaultApiKey,
 			baseUrl: defaultBaseUrl,
 		},
-		onSubmit: async ({ value }) => {
-			setSubmitError("");
-
-			const result = saveProviderFromForm({
-				id: value.id || undefined,
-				type: value.type,
-				name: value.name,
-				model: value.model,
-				apiKey: value.apiKey,
-				baseUrl: value.baseUrl,
-			});
-
-			if (result.error) {
-				setSubmitError(result.error);
-				return;
-			}
-
-			toast.success(t("home.providerDialog.form.toasts.saved"));
-			onSaved(result.providerId ?? "");
-		},
 	});
 
+	const providerType = form.watch("type");
+
+	function onSubmit(values: FormValues) {
+		setSubmitError("");
+
+		const result = saveProviderFromForm({
+			id: values.id || undefined,
+			type: values.type,
+			name: values.name,
+			model: values.model,
+			apiKey: values.apiKey,
+			baseUrl: values.baseUrl,
+		});
+
+		if (result.error) {
+			setSubmitError(result.error);
+			return;
+		}
+
+		toast.success(t("home.providerDialog.form.toasts.saved"));
+		onSaved(result.providerId ?? "");
+	}
+
 	return (
-		<form
-			onSubmit={(e) => {
-				e.preventDefault();
-				e.stopPropagation();
-				form.handleSubmit();
-			}}
-		>
-			<form.Field name="type">
-				{(field) => (
-					<>
-						<Label className="mt-4" htmlFor={field.name}>
-							{t("home.providerDialog.form.fields.providerType.label")}
-						</Label>
-						<Select
-							value={field.state.value}
-							onValueChange={(nextType) => {
-								const prevType = field.state.value;
-								const nextProviderType = nextType as ProviderType;
-								field.handleChange(nextProviderType);
+		<Form {...form}>
+			<form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+				<FormField
+					control={form.control}
+					name="type"
+					render={({ field }) => (
+						<FormItem>
+							<FormLabel>
+								{t("home.providerDialog.form.fields.providerType.label")}
+							</FormLabel>
+							<Select
+								onValueChange={(nextType: ProviderType) => {
+									const prevType = field.value;
+									field.onChange(nextType);
 
-								const prevDefaultName = normalizeProviderName(prevType);
-								const nextDefaultName = normalizeProviderName(nextProviderType);
+									const prevDefaultName = normalizeProviderName(prevType);
+									const nextDefaultName = normalizeProviderName(nextType);
+									const currentName = form.getValues("name");
+									if (!currentName.trim() || currentName.trim() === prevDefaultName) {
+										form.setValue("name", nextDefaultName);
+									}
 
-								const currentName = form.getFieldValue("name");
-								const shouldAutoRename =
-									!currentName.trim() || currentName.trim() === prevDefaultName;
-								if (shouldAutoRename) {
-									form.setFieldValue("name", nextDefaultName);
-								}
-
-								form.setFieldValue(
-									"model",
-									DEFAULT_MODEL_BY_PROVIDER[nextProviderType],
-								);
-								form.setFieldValue("apiKey", "");
-								form.setFieldValue(
-									"baseUrl",
-									nextProviderType === "ollama" ? "http://localhost:11434" : "",
-								);
-							}}
-						>
-							<SelectTrigger id={field.name} className="mt-2 w-full">
-								<SelectValue
-									placeholder={t(
-										"home.providerDialog.form.fields.providerType.placeholder",
-									)}
-								/>
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="openai">OpenAI</SelectItem>
-								<SelectItem value="anthropic">Anthropic</SelectItem>
-								<SelectItem value="gemini">Google Gemini</SelectItem>
-								<SelectItem value="ollama">Ollama</SelectItem>
-							</SelectContent>
-						</Select>
-					</>
-				)}
-			</form.Field>
-
-			<form.Field
-				name="name"
-				validators={{
-					onChange: ({ value }) =>
-						!value.trim() ? "errors.providerNameRequired" : undefined,
-				}}
-			>
-				{(field) => (
-					<>
-						<Label className="mt-4" htmlFor={field.name}>
-							{t("home.providerDialog.form.fields.name.label")}
-						</Label>
-						<Input
-							id={field.name}
-							type="text"
-							inputMode="text"
-							autoComplete="off"
-							spellCheck={false}
-							className="mt-2"
-							placeholder={t(
-								"home.providerDialog.form.fields.name.placeholder",
-							)}
-							value={field.state.value}
-							onBlur={field.handleBlur}
-							onChange={(e) => field.handleChange(e.target.value)}
-						/>
-						<FieldInfo field={field} />
-					</>
-				)}
-			</form.Field>
-
-			<form.Field
-				name="model"
-				validators={{
-					onChange: ({ value }) =>
-						!value.trim() ? "errors.modelRequired" : undefined,
-				}}
-			>
-				{(field) => (
-					<>
-						<Label className="mt-4" htmlFor={field.name}>
-							{t("home.providerDialog.form.fields.model.label")}
-						</Label>
-						<Input
-							id={field.name}
-							type="text"
-							inputMode="text"
-							autoComplete="off"
-							spellCheck={false}
-							className="mt-2"
-							placeholder={t(
-								"home.providerDialog.form.fields.model.placeholder",
-							)}
-							value={field.state.value}
-							onBlur={field.handleBlur}
-							onChange={(e) => field.handleChange(e.target.value)}
-						/>
-						<FieldInfo field={field} />
-					</>
-				)}
-			</form.Field>
-
-			<form.Subscribe selector={(state) => state.values.type}>
-				{(providerType) => (
-					<>
-						{providerType === "openai" ? (
-							<form.Field name="baseUrl">
-								{(field) => (
-									<>
-										<Label className="mt-4" htmlFor={field.name}>
-											{t("home.providerDialog.form.fields.baseUrl.label")}
-										</Label>
-										<Input
-											id={field.name}
-											type="text"
-											inputMode="url"
-											autoComplete="off"
-											spellCheck={false}
-											className="mt-2"
-											placeholder={t(
-												"home.providerDialog.form.fields.baseUrl.placeholder",
-											)}
-											value={field.state.value}
-											onBlur={field.handleBlur}
-											onChange={(e) => field.handleChange(e.target.value)}
-										/>
-										<FieldInfo field={field} />
-									</>
-								)}
-							</form.Field>
-						) : null}
-
-						{providerType === "ollama" ? (
-							<form.Field name="baseUrl">
-								{(field) => (
-									<>
-										<Label className="mt-4" htmlFor={field.name}>
-											{t("home.providerDialog.form.fields.ollamaHost.label")}
-										</Label>
-										<Input
-											id={field.name}
-											type="text"
-											inputMode="url"
-											autoComplete="off"
-											spellCheck={false}
-											className="mt-2"
-											placeholder={t(
-												"home.providerDialog.form.fields.ollamaHost.placeholder",
-											)}
-											value={field.state.value}
-											onBlur={field.handleBlur}
-											onChange={(e) => field.handleChange(e.target.value)}
-										/>
-										<FieldInfo field={field} />
-									</>
-								)}
-							</form.Field>
-						) : null}
-
-						{providerType !== "ollama" ? (
-							<form.Field
-								name="apiKey"
-								validators={{
-									onChange: ({ value }) =>
-										!value.trim() ? "errors.apiKeyRequired" : undefined,
+									form.setValue("model", DEFAULT_MODEL_BY_PROVIDER[nextType]);
+									form.setValue("apiKey", "");
+									form.setValue(
+										"baseUrl",
+										nextType === "ollama" ? "http://localhost:11434" : "",
+									);
 								}}
+								value={field.value}
 							>
-								{(field) => (
-									<>
-										<Label className="mt-4" htmlFor={field.name}>
-											{t("home.providerDialog.form.fields.apiKey.label")}
-										</Label>
-										<Input
-											id={field.name}
-											type="password"
-											inputMode="text"
-											autoComplete="off"
-											spellCheck={false}
-											className="mt-2"
+								<FormControl>
+									<SelectTrigger>
+										<SelectValue
 											placeholder={t(
-												"home.providerDialog.form.fields.apiKey.placeholder",
+												"home.providerDialog.form.fields.providerType.placeholder",
 											)}
-											value={field.state.value}
-											onBlur={field.handleBlur}
-											onChange={(e) => field.handleChange(e.target.value)}
 										/>
-										<FieldInfo field={field} />
-									</>
-								)}
-							</form.Field>
-						) : null}
-					</>
-				)}
-			</form.Subscribe>
-
-			{submitError ? (
-				<Alert className="mt-4" variant="destructive">
-					<TriangleAlertIcon />
-					<AlertTitle>
-						{t("home.providerDialog.form.submitErrorTitle")}
-					</AlertTitle>
-					<AlertDescription>
-						{submitError.startsWith("errors.") ? t(submitError) : submitError}
-					</AlertDescription>
-				</Alert>
-			) : null}
-
-			<div className="mt-6 flex justify-end gap-3">
-				<form.Subscribe
-					selector={(state) => [state.canSubmit, state.isSubmitting] as const}
-				>
-					{([canSubmit, isSubmitting]) => (
-						<Button type="submit" disabled={!canSubmit} className="min-w-24">
-							{isSubmitting ? (
-								<>
-									<Spinner />
-									{t("common.actions.saving")}
-								</>
-							) : (
-								t("common.actions.save")
-							)}
-						</Button>
+									</SelectTrigger>
+								</FormControl>
+								<SelectContent>
+									<SelectItem value="openai">OpenAI</SelectItem>
+									<SelectItem value="anthropic">Anthropic</SelectItem>
+									<SelectItem value="gemini">Google Gemini</SelectItem>
+									<SelectItem value="ollama">Ollama</SelectItem>
+								</SelectContent>
+							</Select>
+							<FormMessage />
+						</FormItem>
 					)}
-				</form.Subscribe>
-			</div>
-		</form>
+				/>
+
+				<FormField
+					control={form.control}
+					name="name"
+					render={({ field }) => (
+						<FormItem>
+							<FormLabel>
+								{t("home.providerDialog.form.fields.name.label")}
+							</FormLabel>
+							<FormControl>
+								<Input
+									placeholder={t(
+										"home.providerDialog.form.fields.name.placeholder",
+									)}
+									{...field}
+								/>
+							</FormControl>
+							<FormMessage>
+								{form.formState.errors.name?.message &&
+									t(form.formState.errors.name.message)}
+							</FormMessage>
+						</FormItem>
+					)}
+				/>
+
+				<FormField
+					control={form.control}
+					name="model"
+					render={({ field }) => (
+						<FormItem>
+							<FormLabel>
+								{t("home.providerDialog.form.fields.model.label")}
+							</FormLabel>
+							<FormControl>
+								<Input
+									placeholder={t(
+										"home.providerDialog.form.fields.model.placeholder",
+									)}
+									{...field}
+								/>
+							</FormControl>
+							<FormMessage>
+								{form.formState.errors.model?.message &&
+									t(form.formState.errors.model.message)}
+							</FormMessage>
+						</FormItem>
+					)}
+				/>
+
+				{providerType === "openai" && (
+					<FormField
+						control={form.control}
+						name="baseUrl"
+						render={({ field }) => (
+							<FormItem>
+								<FormLabel>
+									{t("home.providerDialog.form.fields.baseUrl.label")}
+								</FormLabel>
+								<FormControl>
+									<Input
+										placeholder={t(
+											"home.providerDialog.form.fields.baseUrl.placeholder",
+										)}
+										{...field}
+									/>
+								</FormControl>
+								<FormMessage />
+							</FormItem>
+						)}
+					/>
+				)}
+
+				{providerType === "ollama" && (
+					<FormField
+						control={form.control}
+						name="baseUrl"
+						render={({ field }) => (
+							<FormItem>
+								<FormLabel>
+									{t("home.providerDialog.form.fields.ollamaHost.label")}
+								</FormLabel>
+								<FormControl>
+									<Input
+										placeholder={t(
+											"home.providerDialog.form.fields.ollamaHost.placeholder",
+										)}
+										{...field}
+									/>
+								</FormControl>
+								<FormMessage />
+							</FormItem>
+						)}
+					/>
+				)}
+
+				{providerType !== "ollama" && (
+					<FormField
+						control={form.control}
+						name="apiKey"
+						render={({ field }) => (
+							<FormItem>
+								<FormLabel>
+									{t("home.providerDialog.form.fields.apiKey.label")}
+								</FormLabel>
+								<FormControl>
+									<Input type="password" {...field} />
+								</FormControl>
+								<FormMessage>
+									{form.formState.errors.apiKey?.message &&
+										t(form.formState.errors.apiKey.message)}
+								</FormMessage>
+							</FormItem>
+						)}
+					/>
+				)}
+
+				{submitError && (
+					<Alert variant="destructive">
+						<TriangleAlertIcon />
+						<AlertTitle>
+							{t("home.providerDialog.form.submitErrorTitle")}
+						</AlertTitle>
+						<AlertDescription>
+							{submitError.startsWith("errors.") ? t(submitError) : submitError}
+						</AlertDescription>
+					</Alert>
+				)}
+
+				<div className="mt-6 flex justify-end gap-3">
+					<Button
+						type="submit"
+						disabled={form.formState.isSubmitting}
+						className="min-w-24"
+					>
+						{form.formState.isSubmitting ? (
+							<>
+								<Spinner />
+								{t("common.actions.saving")}
+							</>
+						) : (
+							t("common.actions.save")
+						)}
+					</Button>
+				</div>
+			</form>
+		</Form>
 	);
 }
 
