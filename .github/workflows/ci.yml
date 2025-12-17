@@ -30,6 +30,9 @@ jobs:
       - name: Biome check
         run: bun run check
 
+      - name: Dependency check
+        run: bunx depcheck
+
   typecheck:
     runs-on: ubuntu-latest
     permissions:
