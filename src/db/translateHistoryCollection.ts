@@ -1,8 +1,10 @@
 import {
 	createCollection,
-	localStorageCollectionOptions,
+	localOnlyCollectionOptions,
 } from "@tanstack/react-db";
 import { z } from "zod";
+
+import { indexedDBCollectionOptions } from "@/db/indexedDBCollectionOptions";
 
 const langSchema = z.enum(["zh", "en", "fr", "ja", "es"]);
 
@@ -17,15 +19,41 @@ export const translateHistoryItemSchema = z.object({
 
 export type TranslateHistoryItem = z.infer<typeof translateHistoryItemSchema>;
 
-export const TRANSLATE_HISTORY_STORAGE_KEY = "mintranslate.translateHistory";
+const LEGACY_TRANSLATE_HISTORY_STORAGE_KEY = "mintranslate.translateHistory";
+
+export const TRANSLATE_HISTORY_DB_NAME = "mintranslate";
+export const TRANSLATE_HISTORY_DB_STORE_NAME = "translate-history";
+export const TRANSLATE_HISTORY_DB_VERSION = 1;
+
+function clearLegacyHistoryFromLocalStorage() {
+	try {
+		globalThis.localStorage?.removeItem(LEGACY_TRANSLATE_HISTORY_STORAGE_KEY);
+	} catch {
+		// ignore
+	}
+}
+
+clearLegacyHistoryFromLocalStorage();
+
+const translateHistoryCollectionOptions =
+	typeof globalThis.indexedDB === "undefined"
+		? localOnlyCollectionOptions({
+				id: "translate-history",
+				getKey: (item) => item.id,
+				schema: translateHistoryItemSchema,
+			})
+		: indexedDBCollectionOptions({
+				id: "translate-history",
+				databaseName: TRANSLATE_HISTORY_DB_NAME,
+				storeName: TRANSLATE_HISTORY_DB_STORE_NAME,
+				version: TRANSLATE_HISTORY_DB_VERSION,
+				indexes: [{ name: "createdAt", keyPath: "value.createdAt" }],
+				getKey: (item) => item.id,
+				schema: translateHistoryItemSchema,
+			});
 
 export const translateHistoryCollection = createCollection(
-	localStorageCollectionOptions({
-		id: "translate-history",
-		storageKey: TRANSLATE_HISTORY_STORAGE_KEY,
-		getKey: (item) => item.id,
-		schema: translateHistoryItemSchema,
-	}),
+	translateHistoryCollectionOptions,
 );
 
 function createHistoryId() {

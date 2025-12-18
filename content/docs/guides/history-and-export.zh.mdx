@@ -3,7 +3,9 @@ title: 翻译历史与导出
 description: 查看本地翻译记录、导出 JSON、清空数据。
 ---
 
-MinTranslate 会把翻译历史 **保存在本地浏览器**（localStorage）。
+MinTranslate 会把翻译历史 **保存在本地浏览器**（IndexedDB）。
+
+> 旧版本会将历史写入 `localStorage`（key 为 `mintranslate.translateHistory`）。新版本改用 `IndexedDB`，并会自动清理该旧 key（不会迁移数据）。
 
 ## 在哪里查看？
 

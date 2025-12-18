@@ -17,16 +17,24 @@ MinTranslate 会从 **你的浏览器** 直接向你配置的 Provider 发起翻
 
 ## 本地会保存哪些数据？
 
-MinTranslate 使用浏览器 localStorage 保存配置与历史记录（不同浏览器/设备之间不会自动同步）。
+MinTranslate 使用浏览器存储保存本地数据：
+
+- `localStorage`：配置（Provider、system prompt、界面偏好）
+- `IndexedDB`：翻译历史
+
+这些数据仅保存在当前浏览器/设备上（不同浏览器/设备之间不会自动同步）。
 
 常见的 localStorage key（便于你排查/清理）：
 
 - `mintranslate.aiProviders`：全部 Provider 配置（包含 API Key）
 - `mintranslate.aiDefaultProviderId`：默认 Provider 的 id
 - `mintranslate.appSettings`：应用设置（例如 system prompt）
-- `mintranslate.translateHistory`：翻译历史记录
 - `mintranslate.uiLanguage`：界面语言偏好
 
+IndexedDB：
+
+- 数据库：`mintranslate`
+- 表（store）：`translate-history`（翻译历史记录）
 
 ## 如何清理数据？
 
@@ -34,7 +42,7 @@ MinTranslate 使用浏览器 localStorage 保存配置与历史记录（不同�
 
 - 在 `/settings` 删除 Provider（仅影响本地）
 - 在 `/history` 清空历史记录
-- 在浏览器中对该站点执行“清除站点数据”，一次性清掉全部 localStorage
+- 在浏览器中对该站点执行“清除站点数据”，一次性清掉全部 localStorage/IndexedDB
 
 ## 安全建议
 

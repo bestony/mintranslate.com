@@ -25,7 +25,7 @@ MinTranslate is a minimal translator app powered by **TanStack AI**. It runs tra
 - React 19 + Vite
 - TanStack Start + TanStack Router (file-based routes)
 - TanStack AI (provider adapters)
-- TanStack Store + TanStack React DB (localStorage persistence)
+- TanStack Store + TanStack React DB (IndexedDB persistence for history)
 - Tailwind CSS v4 + Radix UI (shadcn-style primitives)
 - i18next (UI i18n)
 - Vitest + Testing Library, Biome

@@ -17,15 +17,24 @@ What is typically included:
 
 ## What is stored locally
 
-MinTranslate uses browser storage (`localStorage`) for configuration and history. This data is local to your current browser/device and is not automatically synced across devices.
+MinTranslate uses browser storage for local data:
+
+- `localStorage`: configuration (providers, system prompt, UI preferences)
+- `IndexedDB`: translation history
+
+This data is local to your current browser/device and is not automatically synced across devices.
 
 Common keys:
 
 - `mintranslate.aiProviders`: all provider configs (including API keys)
 - `mintranslate.aiDefaultProviderId`: the default provider id
 - `mintranslate.appSettings`: app settings such as system prompt
-- `mintranslate.translateHistory`: translation history items
 - `mintranslate.uiLanguage`: UI language preference
+
+IndexedDB:
+
+- Database: `mintranslate`
+- Store: `translate-history` (translation history)
 
 ## How to clear
 

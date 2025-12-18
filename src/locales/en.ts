@@ -139,7 +139,7 @@ export const en = {
 				title: "Clear translation history?",
 			},
 			description:
-				"Successful translations are automatically saved to your browser's localStorage.",
+				"Successful translations are automatically saved to your browser (IndexedDB).",
 			empty: "No records yet.",
 			title: "Translation history",
 			toasts: {
@@ -248,7 +248,7 @@ export const en = {
 		},
 		card: {
 			title: "All records",
-			description: "Saved locally in your browser (localStorage).",
+			description: "Saved locally in your browser (IndexedDB).",
 			total: "{{count}} items",
 		},
 		confirm: {

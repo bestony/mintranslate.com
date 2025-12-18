@@ -40,7 +40,7 @@ Then open `http://localhost:3000`.
 	- `src/routes/`: file-based routes (UI routes and server handlers in `src/routes/api/`)
 	- `src/components/`: shared UI components (`src/components/ui/` contains UI primitives)
 	- `src/stores/`: client state (TanStack Store)
-	- `src/db/`: local persistence (TanStack React DB / localStorage)
+	- `src/db/`: local persistence (TanStack React DB / localStorage + IndexedDB)
 	- `src/locales/`: i18n dictionaries (e.g. `en.ts`, `zh.ts`)
 	- `src/lib/`: utilities and helpers
 - `content/docs/`: documentation (MDX, Fumadocs)
@@ -77,4 +77,3 @@ Recommended workflow:
 	- a short description
 	- steps to verify (e.g. `bun run dev`)
 	- screenshots for UI changes
-

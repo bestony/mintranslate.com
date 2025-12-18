@@ -17,7 +17,7 @@ MinTranslate 是一个极简 AI 翻译器：你配置自己的模型 Provider（
 
 - **BYOM（Bring your own model）**：你可以自由选择与管理 Provider（OpenAI / Anthropic / Gemini / Ollama）。
 - **System prompt 可配置**：控制翻译风格、术语、格式保留等。
-- **数据本地存储**：Provider 配置、system prompt、翻译历史均保存在本地浏览器（localStorage），可随时导出/清空。
+- **数据本地存储**：Provider 配置与 system prompt 保存在 localStorage；翻译历史保存在 IndexedDB，可随时导出/清空。
 
 ## 推荐阅读路径（按你想解决的问题）
 
@@ -31,7 +31,7 @@ MinTranslate 是一个极简 AI 翻译器：你配置自己的模型 Provider（
 ## 隐私与数据
 
 - 翻译请求会从 **你的浏览器** 直接发送到你配置的模型供应商（MinTranslate 不代收、不转发、不保存你的翻译内容）。
-- 模型供应商配置、system prompt、翻译历史会保存在你的浏览器 localStorage（可在应用内清空，或在浏览器中清除站点数据）。
+- 模型供应商配置与 system prompt 会保存在你的浏览器 localStorage；翻译历史会保存在 IndexedDB（可在应用内清空，或在浏览器中清除站点数据）。
 
 ## 参与开发 / 贡献
 

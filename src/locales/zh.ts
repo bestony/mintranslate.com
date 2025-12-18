@@ -135,7 +135,7 @@ export const zh = {
 				description: "将删除本地浏览器中保存的全部翻译历史记录。",
 				title: "清空翻译历史？",
 			},
-			description: "成功翻译后会自动写入本地浏览器 localStorage。",
+			description: "成功翻译后会自动写入本地浏览器（IndexedDB）。",
 			empty: "暂无记录。",
 			title: "翻译历史",
 			toasts: {
@@ -241,7 +241,7 @@ export const zh = {
 		},
 		card: {
 			title: "全部记录",
-			description: "记录保存在本地浏览器（localStorage）。",
+			description: "记录保存在本地浏览器（IndexedDB）。",
 			total: "{{count}} 条",
 		},
 		confirm: {

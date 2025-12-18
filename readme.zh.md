@@ -24,7 +24,7 @@ MinTranslate 是一个由 **TanStack AI** 驱动的极简翻译应用。它会�
 - React 19 + Vite
 - TanStack Start + TanStack Router（基于文件的路由）
 - TanStack AI（Provider 适配器）
-- TanStack Store + TanStack React DB（localStorage 持久化）
+- TanStack Store + TanStack React DB（翻译历史用 IndexedDB 持久化）
 - Tailwind CSS v4 + Radix UI（shadcn 风格基础组件）
 - i18next（UI 国际化）
 - Vitest + Testing Library、Biome
@@ -49,4 +49,3 @@ bun run dev
 ## 许可
 
 AGPL-3.0。详见 `LICENSE`。
-

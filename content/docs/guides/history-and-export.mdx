@@ -3,7 +3,9 @@ title: History & Export
 description: View local translation history, export as JSON, and clear data.
 ---
 
-MinTranslate stores translation history **locally in your browser** (`localStorage`).
+MinTranslate stores translation history **locally in your browser** (`IndexedDB`).
+
+> Older versions stored history in `localStorage` under `mintranslate.translateHistory`. New versions store history in `IndexedDB` and clear that legacy key automatically (no migration).
 
 ## Where to view
 
