@@ -2,7 +2,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 
 import { normalizeAppLanguage } from "@/lib/app-i18n";
-import { i18n as docsI18n } from "@/lib/i18n";
+import { DEFAULT_DOCS_LANGUAGE } from "@/lib/docs-language";
 import { cn } from "@/lib/utils";
 
 const GITHUB_REPO_URL = "https://github.com/bestony/mintranslate.com" as const;
@@ -16,7 +16,7 @@ export function AppFooter({ className }: { className?: string }) {
 
 	const docsLang =
 		normalizeAppLanguage(lang ?? i18n.resolvedLanguage) ??
-		docsI18n.defaultLanguage;
+		DEFAULT_DOCS_LANGUAGE;
 
 	const linkClassName =
 		"text-muted-foreground underline underline-offset-4 hover:text-primary";

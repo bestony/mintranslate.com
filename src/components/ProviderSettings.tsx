@@ -168,7 +168,10 @@ function ProviderEditorForm({
 									const prevDefaultName = normalizeProviderName(prevType);
 									const nextDefaultName = normalizeProviderName(nextType);
 									const currentName = form.getValues("name");
-									if (!currentName.trim() || currentName.trim() === prevDefaultName) {
+									if (
+										!currentName.trim() ||
+										currentName.trim() === prevDefaultName
+									) {
 										form.setValue("name", nextDefaultName);
 									}
 

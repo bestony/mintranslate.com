@@ -5,12 +5,17 @@ import { createOllama } from "@tanstack/ai-ollama";
 import { createOpenAI } from "@tanstack/ai-openai";
 import { Store } from "@tanstack/react-store";
 
-import {
-	APP_SETTINGS_ID,
-	appSettingsCollection,
-} from "@/db/appSettingsCollection";
 import { addTranslateHistory } from "@/db/translateHistoryCollection";
 import { I18N_KEY_PREFIX } from "@/lib/app-i18n";
+
+let appSettingsModulePromise: Promise<
+	typeof import("@/db/appSettingsCollection")
+> | null = null;
+
+function loadAppSettingsModule() {
+	appSettingsModulePromise ??= import("@/db/appSettingsCollection");
+	return appSettingsModulePromise;
+}
 
 export type Lang = "zh" | "en" | "fr" | "ja" | "es";
 
@@ -375,6 +380,8 @@ export async function hydrateSystemPromptFromDb() {
 	if (typeof window === "undefined") return;
 
 	try {
+		const { APP_SETTINGS_ID, appSettingsCollection } =
+			await loadAppSettingsModule();
 		await appSettingsCollection.preload();
 		const settings = appSettingsCollection.get(APP_SETTINGS_ID);
 		if (!settings) return;
@@ -395,6 +402,8 @@ export async function saveSystemPrompt(nextSystemPrompt: string) {
 	if (typeof window === "undefined") return;
 
 	try {
+		const { APP_SETTINGS_ID, appSettingsCollection } =
+			await loadAppSettingsModule();
 		await appSettingsCollection.preload();
 		const existing = appSettingsCollection.get(APP_SETTINGS_ID);
 		const now = Date.now();
@@ -496,6 +505,37 @@ export function swapTranslateLanguages() {
 	});
 }
 
+function createAdapter(provider: AIProvider): AIAdapter {
+	switch (provider.type) {
+		case "openai": {
+			const key = provider.apiKey?.trim() ?? "";
+			if (!key) {
+				throw new Error(`${I18N_KEY_PREFIX}errors.openaiApiKeyMissing`);
+			}
+			const baseURL = provider.baseUrl?.trim();
+			return createOpenAI(key, baseURL ? { baseURL } : undefined);
+		}
+		case "anthropic": {
+			const key = provider.apiKey?.trim() ?? "";
+			if (!key) {
+				throw new Error(`${I18N_KEY_PREFIX}errors.anthropicApiKeyMissing`);
+			}
+			return createAnthropic(key);
+		}
+		case "gemini": {
+			const key = provider.apiKey?.trim() ?? "";
+			if (!key) {
+				throw new Error(`${I18N_KEY_PREFIX}errors.geminiApiKeyMissing`);
+			}
+			return createGemini(key);
+		}
+		case "ollama": {
+			const host = provider.baseUrl?.trim();
+			return createOllama(host || undefined);
+		}
+	}
+}
+
 async function translateViaProvider(options: {
 	provider: AIProvider;
 	text: string;
@@ -513,37 +553,7 @@ async function translateViaProvider(options: {
 		abortController,
 	} = options;
 	const model = provider.model;
-
-	const adapter: AIAdapter = (() => {
-		switch (provider.type) {
-			case "openai": {
-				const key = provider.apiKey?.trim() ?? "";
-				if (!key) {
-					throw new Error(`${I18N_KEY_PREFIX}errors.openaiApiKeyMissing`);
-				}
-				const baseURL = provider.baseUrl?.trim();
-				return createOpenAI(key, baseURL ? { baseURL } : undefined);
-			}
-			case "anthropic": {
-				const key = provider.apiKey?.trim() ?? "";
-				if (!key) {
-					throw new Error(`${I18N_KEY_PREFIX}errors.anthropicApiKeyMissing`);
-				}
-				return createAnthropic(key);
-			}
-			case "gemini": {
-				const key = provider.apiKey?.trim() ?? "";
-				if (!key) {
-					throw new Error(`${I18N_KEY_PREFIX}errors.geminiApiKeyMissing`);
-				}
-				return createGemini(key);
-			}
-			case "ollama": {
-				const host = provider.baseUrl?.trim();
-				return createOllama(host || undefined);
-			}
-		}
-	})();
+	const adapter = createAdapter(provider);
 
 	const userPrompt = [
 		`请将下面的文本从「${langLabel[sourceLang]}」翻译成「${langLabel[targetLang]}」。`,
