@@ -32,12 +32,11 @@ export default defineConfig({
 				"src/routes/**",
 			],
 			thresholds: {
-				lines: 99,
-				functions: 99,
-				statements: 99,
-				branches: 99,
+				lines: 100,
+				functions: 100,
+				statements: 100,
+				branches: 100,
 			},
 		},
 	},
 });
-
