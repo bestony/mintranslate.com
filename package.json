@@ -4,6 +4,7 @@
   "type": "module",
   "version": "0.0.1",
   "scripts": {
+    "prepare": "if [ -d .git ]; then lefthook install; fi",
     "dev": "vite dev --port 3000",
     "build": "vite build",
     "build:analyze": "ANALYZE=true vite build",
@@ -11,7 +12,13 @@
     "test": "vitest run",
     "format": "biome format",
     "lint": "biome lint",
-    "check": "biome check"
+    "check": "biome check",
+    "hooks:install": "lefthook install",
+    "hooks:uninstall": "lefthook uninstall",
+    "hooks:check": "lefthook check-install",
+    "hooks:validate": "lefthook validate",
+    "hooks:dump": "lefthook dump",
+    "hooks:run": "lefthook run"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -66,6 +73,7 @@
     "depcheck": "^1.4.7",
     "fumadocs-mdx": "^14.1.1",
     "jsdom": "^27.0.0",
+    "lefthook": "^2.0.12",
     "nitro": "latest",
     "rollup-plugin-visualizer": "^6.0.5",
     "tailwindcss": "^4.0.6",

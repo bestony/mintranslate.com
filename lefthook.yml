@@ -1,0 +1,26 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: biome (staged)
+      glob:
+        - "src/**/*.{ts,tsx,js,jsx,json,css,html}"
+        - ".vscode/**/*.{json}"
+        - "index.html"
+      exclude:
+        - "src/routeTree.gen.ts"
+        - "src/styles.css"
+        - "src/components/ui/**"
+      run: bun run check -- --write {staged_files}
+      stage_fixed: true
+
+pre-push:
+  parallel: true
+  jobs:
+    - name: biome
+      run: bun run check
+
+    - name: typecheck
+      run: bun x tsc -p tsconfig.json --noEmit
+
+    - name: test
+      run: bun run test
