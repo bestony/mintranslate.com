@@ -12,6 +12,10 @@ pre-commit:
         - "src/components/ui/**"
       run: bun run check -- --write {staged_files}
       stage_fixed: true
+    - name: typecheck
+      run: bun x tsc -p tsconfig.json --noEmit
+    - name: test
+      run: bun run test
 
 pre-push:
   parallel: true
