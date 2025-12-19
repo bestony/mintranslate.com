@@ -11,6 +11,8 @@ count.txt
 .wrangler
 .output
 .vinxi
+playwright-report
+test-results
 todos.json
 # Created by https://www.toptal.com/developers/gitignore/api/windows,macos,linux,sublimetext,visualstudiocode,node,react
 # Edit at https://www.toptal.com/developers/gitignore?templates=windows,macos,linux,sublimetext,visualstudiocode,node,react

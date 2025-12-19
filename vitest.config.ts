@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import viteTsConfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
@@ -13,6 +13,7 @@ export default defineConfig({
 		clearMocks: true,
 		mockReset: true,
 		restoreMocks: true,
+		exclude: [...configDefaults.exclude, "e2e/**"],
 		coverage: {
 			provider: "v8",
 			reporter: ["text", "json-summary", "html"],

@@ -36,9 +36,12 @@ pre-push:
         - "index.html"
       run: bun x tsc -p tsconfig.json --noEmit
 
-    - name: test
+    - name: test (coverage)
       glob:
         - "src/**/*.{ts,tsx,js,jsx,json,css,html}"
         - ".vscode/**/*.{json}"
         - "index.html"
-      run: bun run test
+      run: bun run test -- --coverage || (echo "Coverage below 100%. Please fix tests/coverage before pushing." && exit 1)
+
+    - name: e2e
+      run: bun run test:e2e
