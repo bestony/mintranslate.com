@@ -13,10 +13,14 @@ pre-commit:
       run: bun run check -- --write {staged_files}
       stage_fixed: true
     - name: typecheck
+      glob:
+        - "src/**/*.{ts,tsx,js,jsx,json,css,html}"
       run: bun x tsc -p tsconfig.json --noEmit
     - name: test
       run: bun run test
     - name: depcheck
+      glob:
+        - "src/**/*.{ts,tsx,js,jsx,json,css,html}"
       run: bunx depcheck --ignores="fumadocs-mdx:collections,@types/mdx,@vitest/coverage-v8,depcheck,tailwindcss,tw-animate-css,@tanstack/router-plugin"
 
 pre-push:
