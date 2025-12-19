@@ -15,8 +15,14 @@ describe("useIsMobile", () => {
 					media: "",
 					matches: false,
 					onchange: null,
-					addEventListener: (_event, cb) => listeners.add(cb),
-					removeEventListener: (_event, cb) => listeners.delete(cb),
+					addEventListener: (
+						_event: string,
+						cb: (event: MediaQueryListEvent) => void,
+					) => listeners.add(cb),
+					removeEventListener: (
+						_event: string,
+						cb: (event: MediaQueryListEvent) => void,
+					) => listeners.delete(cb),
 					addListener: () => {
 						// legacy
 					},

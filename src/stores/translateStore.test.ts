@@ -17,6 +17,11 @@ const appSettingsCollectionMock = {
 	insert: vi.fn(),
 };
 
+type AbortControllerLike = {
+	signal: { aborted: boolean };
+	abort: () => void;
+};
+
 vi.mock("@tanstack/ai", () => ({
 	chat: chatMock,
 }));
@@ -224,6 +229,19 @@ describe("translateStore", () => {
 		hydrateProviderSettingsFromStorage();
 
 		expect(translateStore.state.providers).toEqual([]);
+	});
+
+	it("hydrateProviderSettingsFromStorage ignores localStorage get errors", async () => {
+		const { hydrateProviderSettingsFromStorage, translateStore } =
+			await importFreshStore();
+
+		vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+			throw new Error("quota exceeded");
+		});
+
+		expect(() => hydrateProviderSettingsFromStorage()).not.toThrow();
+		expect(translateStore.state.providers).toEqual([]);
+		expect(translateStore.state.defaultProviderId).toBe("");
 	});
 
 	it("hydrateProviderSettingsFromStorage returns empty when storage is not an array", async () => {
@@ -493,6 +511,27 @@ describe("translateStore", () => {
 		).toBeNull();
 	});
 
+	it("saveProviderFromForm ignores localStorage set errors", async () => {
+		const { saveProviderFromForm, translateStore } = await importFreshStore();
+
+		vi.stubGlobal("crypto", { randomUUID: vi.fn(() => "p1") });
+		vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+			throw new Error("quota exceeded");
+		});
+
+		const created = saveProviderFromForm({
+			type: "openai",
+			name: "OpenAI",
+			model: "gpt",
+			apiKey: "k",
+			baseUrl: "",
+		});
+
+		expect(created.error).toBeNull();
+		expect(translateStore.state.providers).toHaveLength(1);
+		expect(translateStore.state.defaultProviderId).toBe("p1");
+	});
+
 	it("saveProviderFromForm falls back to Date.now + Math.random when randomUUID is unavailable", async () => {
 		const { saveProviderFromForm } = await importFreshStore();
 
@@ -599,7 +638,7 @@ describe("translateStore", () => {
 			await importFreshStore();
 
 		const originalWindow = globalThis.window;
-		// @ts-expect-error - simulate SSR
+		// simulate SSR
 		delete (globalThis as unknown as { window?: Window }).window;
 
 		try {
@@ -673,7 +712,7 @@ describe("translateStore", () => {
 		const { saveSystemPrompt, translateStore } = await importFreshStore();
 
 		const originalWindow = globalThis.window;
-		// @ts-expect-error - simulate SSR
+		// simulate SSR
 		delete (globalThis as unknown as { window?: Window }).window;
 
 		try {
@@ -712,9 +751,10 @@ describe("translateStore", () => {
 			systemPrompt: "next",
 			updatedAt: 1,
 		});
-		const draft = { systemPrompt: "next", updatedAt: 1 };
+		type AppSettingsDraft = { systemPrompt: string; updatedAt: number };
+		const draft: AppSettingsDraft = { systemPrompt: "next", updatedAt: 1 };
 		appSettingsCollectionMock.update.mockImplementation(
-			(_id: string, cb: (draft: typeof draft) => void) => {
+			(_id: string, cb: (draftValue: AppSettingsDraft) => void) => {
 				cb(draft);
 				return {
 					isPersisted: { promise: Promise.resolve() },
@@ -940,18 +980,22 @@ describe("translateStore", () => {
 		} = await importFreshStore();
 
 		createOpenAIMock.mockReturnValue({ type: "openai-adapter" });
-		chatMock.mockImplementation(({ messages }: { messages: unknown }) => {
-			expect(messages).toEqual(
-				expect.arrayContaining([
-					expect.objectContaining({ role: "system" }),
-					expect.objectContaining({ role: "user" }),
-				]),
-			);
+		chatMock.mockImplementation(
+			({
+				messages,
+				systemPrompts,
+			}: {
+				messages: unknown;
+				systemPrompts?: string[];
+			}) => {
+				expect(messages).toEqual([expect.objectContaining({ role: "user" })]);
+				expect(systemPrompts).toEqual(["SYSTEM"]);
 
-			return (async function* () {
-				yield { type: "content", content: " translated " };
-			})();
-		});
+				return (async function* () {
+					yield { type: "content", content: " translated " };
+				})();
+			},
+		);
 
 		translateStore.setState((s) => ({
 			...s,
@@ -1307,9 +1351,9 @@ describe("translateStore", () => {
 
 		createOllamaMock.mockReturnValue({ type: "ollama-adapter" });
 
-		let resolveFirst: ((value: unknown) => void) | null = null;
-		const firstDone = new Promise((r) => {
-			resolveFirst = r;
+		let resolveFirst: (() => void) | null = null;
+		const firstDone = new Promise<void>((resolve) => {
+			resolveFirst = resolve;
 		});
 
 		chatMock.mockImplementationOnce(() => {
@@ -1338,7 +1382,8 @@ describe("translateStore", () => {
 		await flushPromises();
 		await flushPromises();
 
-		resolveFirst?.(undefined);
+		const resolveFirstFn = resolveFirst as (() => void) | null;
+		if (resolveFirstFn) resolveFirstFn();
 		await flushPromises();
 
 		expect(translateStore.state.rightText).toBe("second");
@@ -1395,7 +1440,8 @@ describe("translateStore", () => {
 			await flushPromises();
 			await flushPromises();
 
-			resolveFirst?.();
+			const resolveFirstFn = resolveFirst as (() => void) | null;
+			if (resolveFirstFn) resolveFirstFn();
 			await flushPromises();
 
 			expect(translateStore.state.rightText).toBe("second");
@@ -1455,7 +1501,8 @@ describe("translateStore", () => {
 			await flushPromises();
 			await flushPromises();
 
-			rejectFirst?.(new Error("boom"));
+			const rejectFirstFn = rejectFirst as ((reason?: unknown) => void) | null;
+			if (rejectFirstFn) rejectFirstFn(new Error("boom"));
 			await flushPromises();
 
 			expect(translateStore.state.translateError).toBe("");
@@ -1521,9 +1568,9 @@ describe("translateStore", () => {
 			allowStreamToContinue = resolve;
 		});
 
-		let controller: AbortController | null = null;
+		let controller: AbortControllerLike | null = null;
 		chatMock.mockImplementation(
-			({ abortController }: { abortController?: AbortController }) => {
+			({ abortController }: { abortController?: AbortControllerLike }) => {
 				controller = abortController ?? null;
 				return (async function* () {
 					yield { type: "content", content: "working" };
@@ -1544,13 +1591,17 @@ describe("translateStore", () => {
 		await flushPromises();
 
 		expect(translateStore.state.isTranslating).toBe(true);
-		expect(controller?.signal.aborted).toBe(false);
+		const activeController = controller as AbortControllerLike | null;
+		expect(activeController).not.toBeNull();
+		if (!activeController) throw new Error("Expected abort controller");
+		expect(activeController.signal.aborted).toBe(false);
 
 		stopTranslateEffects();
-		allowStreamToContinue?.();
+		const resumeStream = allowStreamToContinue as (() => void) | null;
+		if (resumeStream) resumeStream();
 		await flushPromises();
 
-		expect(controller?.signal.aborted).toBe(true);
+		expect(activeController.signal.aborted).toBe(true);
 		expect(translateStore.state.isTranslating).toBe(false);
 	});
 });

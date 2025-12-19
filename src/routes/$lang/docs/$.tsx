@@ -2,6 +2,7 @@ import browserCollections from "fumadocs-mdx:collections/browser";
 import { createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { useFumadocsLoader } from "fumadocs-core/source/client";
+import type { TOCItemType } from "fumadocs-core/toc";
 import { defineI18nUI } from "fumadocs-ui/i18n";
 import { DocsLayout } from "fumadocs-ui/layouts/docs";
 import {
@@ -12,6 +13,7 @@ import {
 } from "fumadocs-ui/layouts/docs/page";
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import { RootProvider } from "fumadocs-ui/provider/tanstack";
+import type { ComponentType } from "react";
 import { i18n } from "@/lib/i18n";
 import { baseOptions } from "@/lib/layout.shared";
 import { source } from "@/lib/source";
@@ -70,7 +72,15 @@ const serverLoader = createServerFn({
 	});
 
 const clientLoader = browserCollections.docs.createClientLoader({
-	component({ toc, frontmatter, default: MDX }) {
+	component({
+		toc,
+		frontmatter,
+		default: MDX,
+	}: {
+		toc?: TOCItemType[];
+		frontmatter: { title?: string; description?: string };
+		default: ComponentType<{ components?: Record<string, unknown> }>;
+	}) {
 		return (
 			<DocsPage toc={toc}>
 				<DocsTitle>{frontmatter.title}</DocsTitle>

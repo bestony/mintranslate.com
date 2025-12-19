@@ -134,6 +134,22 @@ function persistTranslateLangPair(sourceLang: Lang, targetLang: Lang) {
 	}
 }
 
+function safeLocalStorageGet(key: string): string | null {
+	try {
+		return globalThis.localStorage?.getItem(key) ?? null;
+	} catch {
+		return null;
+	}
+}
+
+function safeLocalStorageSet(key: string, value: string) {
+	try {
+		globalThis.localStorage?.setItem(key, value);
+	} catch {
+		// ignore
+	}
+}
+
 function requiresApiKey(providerType: ProviderType) {
 	return providerType !== "ollama";
 }
@@ -147,14 +163,8 @@ function persistProviderSettings(
 	nextProviders: AIProvider[],
 	nextDefaultId: string,
 ) {
-	globalThis.localStorage?.setItem(
-		AI_PROVIDERS_STORAGE_KEY,
-		JSON.stringify(nextProviders),
-	);
-	globalThis.localStorage?.setItem(
-		AI_DEFAULT_PROVIDER_ID_STORAGE_KEY,
-		nextDefaultId,
-	);
+	safeLocalStorageSet(AI_PROVIDERS_STORAGE_KEY, JSON.stringify(nextProviders));
+	safeLocalStorageSet(AI_DEFAULT_PROVIDER_ID_STORAGE_KEY, nextDefaultId);
 }
 
 function parseProvidersFromStorage(raw: string | null): AIProvider[] {
@@ -221,10 +231,10 @@ function parseTranslateLangPairFromStorage(raw: string | null): {
 
 export function hydrateProviderSettingsFromStorage() {
 	const storedProviders = parseProvidersFromStorage(
-		globalThis.localStorage?.getItem(AI_PROVIDERS_STORAGE_KEY) ?? null,
+		safeLocalStorageGet(AI_PROVIDERS_STORAGE_KEY),
 	);
 	const storedDefaultId =
-		globalThis.localStorage?.getItem(AI_DEFAULT_PROVIDER_ID_STORAGE_KEY) ?? "";
+		safeLocalStorageGet(AI_DEFAULT_PROVIDER_ID_STORAGE_KEY) ?? "";
 
 	translateStore.setState((state) => {
 		let nextProviders = storedProviders;
@@ -240,8 +250,7 @@ export function hydrateProviderSettingsFromStorage() {
 
 		if (!nextProviders.length) {
 			const legacyKey =
-				globalThis.localStorage?.getItem(LEGACY_GEMINI_API_KEY_STORAGE_KEY) ??
-				"";
+				safeLocalStorageGet(LEGACY_GEMINI_API_KEY_STORAGE_KEY) ?? "";
 			if (legacyKey.trim()) {
 				const migrated: AIProvider = {
 					id: createProviderId(),
@@ -266,7 +275,7 @@ export function hydrateProviderSettingsFromStorage() {
 
 export function hydrateTranslateLangPairFromStorage() {
 	const storedPair = parseTranslateLangPairFromStorage(
-		globalThis.localStorage?.getItem(TRANSLATE_LANG_PAIR_STORAGE_KEY) ?? null,
+		safeLocalStorageGet(TRANSLATE_LANG_PAIR_STORAGE_KEY),
 	);
 	if (!storedPair) return;
 
@@ -562,17 +571,14 @@ async function translateViaProvider(options: {
 		text,
 	].join("\n");
 
-	const messages = systemPrompt.trim()
-		? ([
-				{ role: "system", content: systemPrompt },
-				{ role: "user", content: userPrompt },
-			] as const)
-		: ([{ role: "user", content: userPrompt }] as const);
+	const messages = [{ role: "user" as const, content: userPrompt }];
+	const systemPrompts = systemPrompt.trim() ? [systemPrompt] : undefined;
 
 	const stream = chat({
 		adapter,
 		model,
 		messages,
+		systemPrompts,
 		options: {
 			temperature: 0.2,
 		},

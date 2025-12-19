@@ -103,11 +103,12 @@ export default defineConfig(({ command }) => ({
 		mdx(MdxConfig),
 		tanstackStart(),
 		viteReact(),
-		process.env.ANALYZE &&
-			visualizer({
-				open: true,
-				brotliSize: true,
-				filename: "report.html",
-			}),
+		process.env.ANALYZE
+			? visualizer({
+					open: true,
+					brotliSize: true,
+					filename: "report.html",
+				})
+			: undefined,
 	],
 }));

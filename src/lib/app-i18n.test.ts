@@ -96,7 +96,7 @@ describe("app-i18n", () => {
 
 		it("no-ops on SSR when window is undefined", async () => {
 			const originalWindow = globalThis.window;
-			// @ts-expect-error - simulate SSR
+			// simulate SSR
 			delete (globalThis as unknown as { window?: Window }).window;
 
 			try {

@@ -6,6 +6,6 @@ describe("baseOptions", () => {
 	it("returns stable layout options", () => {
 		const options = baseOptions();
 		expect(options.i18n).toBe(i18n);
-		expect(options.nav.title).toBe("MinTranslate");
+		expect(options.nav?.title).toBe("MinTranslate");
 	});
 });

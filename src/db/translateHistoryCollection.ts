@@ -1,4 +1,5 @@
 import {
+	type Collection,
 	createCollection,
 	localOnlyCollectionOptions,
 } from "@tanstack/react-db";
@@ -35,26 +36,27 @@ function clearLegacyHistoryFromLocalStorage() {
 
 clearLegacyHistoryFromLocalStorage();
 
-const translateHistoryCollectionOptions =
+export const translateHistoryCollection = (
 	typeof globalThis.indexedDB === "undefined"
-		? localOnlyCollectionOptions({
-				id: "translate-history",
-				getKey: (item) => item.id,
-				schema: translateHistoryItemSchema,
-			})
-		: indexedDBCollectionOptions({
-				id: "translate-history",
-				databaseName: TRANSLATE_HISTORY_DB_NAME,
-				storeName: TRANSLATE_HISTORY_DB_STORE_NAME,
-				version: TRANSLATE_HISTORY_DB_VERSION,
-				indexes: [{ name: "createdAt", keyPath: "value.createdAt" }],
-				getKey: (item) => item.id,
-				schema: translateHistoryItemSchema,
-			});
-
-export const translateHistoryCollection = createCollection(
-	translateHistoryCollectionOptions,
-);
+		? createCollection(
+				localOnlyCollectionOptions({
+					id: "translate-history",
+					getKey: (item) => item.id,
+					schema: translateHistoryItemSchema,
+				}),
+			)
+		: createCollection(
+				indexedDBCollectionOptions({
+					id: "translate-history",
+					databaseName: TRANSLATE_HISTORY_DB_NAME,
+					storeName: TRANSLATE_HISTORY_DB_STORE_NAME,
+					version: TRANSLATE_HISTORY_DB_VERSION,
+					indexes: [{ name: "createdAt", keyPath: "value.createdAt" }],
+					getKey: (item) => item.id,
+					schema: translateHistoryItemSchema,
+				}),
+			)
+) as Collection<TranslateHistoryItem, string>;
 
 function createHistoryId() {
 	if (typeof globalThis.crypto?.randomUUID === "function") {

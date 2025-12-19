@@ -25,7 +25,7 @@ export type IndexedDBIndexConfig = {
 export interface IndexedDBCollectionConfig<
 	T extends object = object,
 	TSchema extends StandardSchemaV1 = never,
-	TKey extends IDBValidKey = IDBValidKey,
+	TKey extends string | number = string | number,
 > extends BaseCollectionConfig<T, TKey, TSchema> {
 	databaseName: string;
 	storeName: string;
@@ -39,7 +39,7 @@ export interface IndexedDBCollectionUtils extends UtilsRecord {
 
 type IndexedDBCollectionOptionsResult<
 	T extends object,
-	TKey extends IDBValidKey,
+	TKey extends string | number,
 	TSchema extends StandardSchemaV1 | never = never,
 > = CollectionConfig<T, TKey, TSchema, IndexedDBCollectionUtils> & {
 	id: string;
@@ -96,7 +96,7 @@ async function setPersistedValues<T extends object>(
 	const store = tx.objectStore(storeName);
 
 	for (const mutation of mutations) {
-		const key = mutation.key as IDBValidKey;
+		const key: IDBValidKey = mutation.key;
 		if (mutation.type === "delete") {
 			store.delete(key);
 			continue;
@@ -208,7 +208,7 @@ async function needsUpgrade(
 	return missingIndex;
 }
 
-function confirmOperationsSync<T extends object, TKey extends IDBValidKey>(
+function confirmOperationsSync<T extends object, TKey extends string | number>(
 	syncParams: Parameters<SyncConfig<T, TKey>["sync"]>[0] | null,
 	mutations: Array<PendingMutation<T>>,
 ) {
@@ -231,7 +231,7 @@ function confirmOperationsSync<T extends object, TKey extends IDBValidKey>(
 // Overload for when schema is provided
 export function indexedDBCollectionOptions<
 	T extends StandardSchemaV1,
-	TKey extends IDBValidKey = IDBValidKey,
+	TKey extends string | number = string | number,
 >(
 	config: IndexedDBCollectionConfig<InferSchemaOutput<T>, T, TKey> & {
 		schema: T;
@@ -243,7 +243,7 @@ export function indexedDBCollectionOptions<
 // Overload for when no schema is provided
 export function indexedDBCollectionOptions<
 	T extends object,
-	TKey extends IDBValidKey = IDBValidKey,
+	TKey extends string | number = string | number,
 >(
 	config: IndexedDBCollectionConfig<T, never, TKey> & {
 		schema?: never;
@@ -255,7 +255,7 @@ export function indexedDBCollectionOptions<
 export function indexedDBCollectionOptions<
 	T extends object = object,
 	TSchema extends StandardSchemaV1 = never,
-	TKey extends IDBValidKey = IDBValidKey,
+	TKey extends string | number = string | number,
 >(
 	config: IndexedDBCollectionConfig<T, TSchema, TKey>,
 ): IndexedDBCollectionOptionsResult<T, TKey, TSchema> & {
