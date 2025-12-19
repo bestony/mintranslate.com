@@ -30,7 +30,15 @@ pre-push:
       run: bun run check
 
     - name: typecheck
+      glob:
+        - "src/**/*.{ts,tsx,js,jsx,json,css,html}"
+        - ".vscode/**/*.{json}"
+        - "index.html"
       run: bun x tsc -p tsconfig.json --noEmit
 
     - name: test
+      glob:
+        - "src/**/*.{ts,tsx,js,jsx,json,css,html}"
+        - ".vscode/**/*.{json}"
+        - "index.html"
       run: bun run test
