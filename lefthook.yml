@@ -16,6 +16,8 @@ pre-commit:
       run: bun x tsc -p tsconfig.json --noEmit
     - name: test
       run: bun run test
+    - name: depcheck
+      run: bunx depcheck --ignores="fumadocs-mdx:collections,@types/mdx,@vitest/coverage-v8,depcheck,tailwindcss,tw-animate-css,@tanstack/router-plugin"
 
 pre-push:
   parallel: true

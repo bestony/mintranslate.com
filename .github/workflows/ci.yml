@@ -31,7 +31,7 @@ jobs:
         run: bun run check
 
       - name: Dependency check
-        run: bunx depcheck
+        run: bunx depcheck --ignores="fumadocs-mdx:collections,@types/mdx,@vitest/coverage-v8,depcheck,tailwindcss,tw-animate-css,@tanstack/router-plugin"
 
   typecheck:
     runs-on: ubuntu-latest
