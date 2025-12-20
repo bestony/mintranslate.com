@@ -1233,6 +1233,61 @@ describe("translateStore", () => {
 		).rejects.toThrow(`${I18N_KEY_PREFIX}errors.geminiApiKeyMissing`);
 	});
 
+	it("translateViaProvider throws for unsupported provider types", async () => {
+		const { __test__ } = await importFreshStore();
+
+		await expect(
+			__test__.translateViaProvider({
+				provider: {
+					id: "u1",
+					type: "custom" as unknown as "ollama",
+					name: "Custom",
+					model: "m",
+				},
+				text: "hi",
+				sourceLang: "en",
+				targetLang: "zh",
+				systemPrompt: "",
+			}),
+		).rejects.toThrow("Unsupported provider type");
+	});
+
+	it("translateViaProvider omits OpenAI system message when systemPrompt is blank", async () => {
+		const { __test__ } = await importFreshStore();
+
+		openAIChatCompletionsCreateMock.mockResolvedValue({
+			choices: [{ message: { content: "ok" } }],
+		});
+
+		await __test__.translateViaProvider({
+			provider: {
+				id: "p1",
+				type: "openai",
+				name: "OpenAI",
+				model: "gpt",
+				apiKey: "k",
+			},
+			text: "hi",
+			sourceLang: "en",
+			targetLang: "zh",
+			systemPrompt: "   ",
+		});
+
+		const [request, options] =
+			openAIChatCompletionsCreateMock.mock.calls[0] ?? [];
+		const messages = (request?.messages ?? []) as { role?: string }[];
+
+		expect(options).toBeUndefined();
+		expect(messages).toHaveLength(1);
+		expect(messages.some((message) => message.role === "system")).toBe(false);
+		expect(messages[0]).toEqual(
+			expect.objectContaining({
+				role: "user",
+				content: expect.stringContaining("hi"),
+			}),
+		);
+	});
+
 	it("creates adapters for Anthropic/Gemini and supports Ollama host", async () => {
 		const {
 			startTranslateEffects,
