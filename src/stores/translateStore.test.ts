@@ -3,10 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18N_KEY_PREFIX } from "@/lib/app-i18n";
 
 const chatMock = vi.fn();
-const createOpenAIMock = vi.fn();
 const createAnthropicMock = vi.fn();
 const createGeminiMock = vi.fn();
 const createOllamaMock = vi.fn();
+const openAIConstructorMock = vi.fn();
+const openAIChatCompletionsCreateMock = vi.fn();
 
 const addTranslateHistoryMock = vi.fn();
 
@@ -25,9 +26,6 @@ type AbortControllerLike = {
 vi.mock("@tanstack/ai", () => ({
 	chat: chatMock,
 }));
-vi.mock("@tanstack/ai-openai", () => ({
-	createOpenAI: createOpenAIMock,
-}));
 vi.mock("@tanstack/ai-anthropic", () => ({
 	createAnthropic: createAnthropicMock,
 }));
@@ -36,6 +34,14 @@ vi.mock("@tanstack/ai-gemini", () => ({
 }));
 vi.mock("@tanstack/ai-ollama", () => ({
 	createOllama: createOllamaMock,
+}));
+vi.mock("openai", () => ({
+	default: class OpenAI {
+		chat = { completions: { create: openAIChatCompletionsCreateMock } };
+		constructor(config: unknown) {
+			openAIConstructorMock(config);
+		}
+	},
 }));
 
 vi.mock("@/db/translateHistoryCollection", () => ({
@@ -84,10 +90,11 @@ beforeEach(() => {
 
 	addTranslateHistoryMock.mockReset();
 	chatMock.mockReset();
-	createOpenAIMock.mockReset();
 	createAnthropicMock.mockReset();
 	createGeminiMock.mockReset();
 	createOllamaMock.mockReset();
+	openAIConstructorMock.mockReset();
+	openAIChatCompletionsCreateMock.mockReset();
 
 	window.localStorage.clear();
 });
@@ -971,7 +978,7 @@ describe("translateStore", () => {
 		stopTranslateEffects();
 	});
 
-	it("runs a successful translation via OpenAI adapter and persists history", async () => {
+	it("runs a successful translation via OpenAI client and persists history", async () => {
 		const {
 			startTranslateEffects,
 			stopTranslateEffects,
@@ -979,23 +986,9 @@ describe("translateStore", () => {
 			translateStore,
 		} = await importFreshStore();
 
-		createOpenAIMock.mockReturnValue({ type: "openai-adapter" });
-		chatMock.mockImplementation(
-			({
-				messages,
-				systemPrompts,
-			}: {
-				messages: unknown;
-				systemPrompts?: string[];
-			}) => {
-				expect(messages).toEqual([expect.objectContaining({ role: "user" })]);
-				expect(systemPrompts).toEqual(["SYSTEM"]);
-
-				return (async function* () {
-					yield { type: "content", content: " translated " };
-				})();
-			},
-		);
+		openAIChatCompletionsCreateMock.mockResolvedValue({
+			choices: [{ message: { content: " translated " } }],
+		});
 
 		translateStore.setState((s) => ({
 			...s,
@@ -1020,9 +1013,25 @@ describe("translateStore", () => {
 		await flushPromises();
 		await flushPromises();
 
-		expect(createOpenAIMock).toHaveBeenCalledWith("k", {
+		expect(openAIConstructorMock).toHaveBeenCalledWith({
+			apiKey: "k",
 			baseURL: "https://example.com",
+			dangerouslyAllowBrowser: true,
 		});
+		expect(openAIChatCompletionsCreateMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				model: "gpt",
+				messages: [
+					{ role: "system", content: "SYSTEM" },
+					expect.objectContaining({
+						role: "user",
+						content: expect.stringContaining("你好"),
+					}),
+				],
+				temperature: 0.2,
+			}),
+			expect.anything(),
+		);
 		expect(translateStore.state.rightText).toBe("translated");
 		expect(addTranslateHistoryMock).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -1036,7 +1045,7 @@ describe("translateStore", () => {
 		stopTranslateEffects();
 	});
 
-	it("uses OpenAI adapter without baseUrl when baseUrl is blank", async () => {
+	it("uses OpenAI client without baseUrl when baseUrl is blank", async () => {
 		const {
 			startTranslateEffects,
 			stopTranslateEffects,
@@ -1044,12 +1053,9 @@ describe("translateStore", () => {
 			translateStore,
 		} = await importFreshStore();
 
-		createOpenAIMock.mockReturnValue({ type: "openai-adapter" });
-		chatMock.mockReturnValue(
-			(async function* () {
-				yield { type: "content", content: "ok" };
-			})(),
-		);
+		openAIChatCompletionsCreateMock.mockResolvedValue({
+			choices: [{ message: { content: "ok" } }],
+		});
 
 		translateStore.setState((s) => ({
 			...s,
@@ -1070,7 +1076,23 @@ describe("translateStore", () => {
 		setDebouncedLeftText("hi");
 		await flushPromises();
 
-		expect(createOpenAIMock).toHaveBeenCalledWith("k", undefined);
+		expect(openAIConstructorMock).toHaveBeenCalledWith({
+			apiKey: "k",
+			dangerouslyAllowBrowser: true,
+		});
+		expect(openAIChatCompletionsCreateMock).toHaveBeenCalledWith(
+			expect.objectContaining({
+				model: "gpt",
+				messages: expect.arrayContaining([
+					expect.objectContaining({
+						role: "user",
+						content: expect.stringContaining("hi"),
+					}),
+				]),
+				temperature: 0.2,
+			}),
+			expect.anything(),
+		);
 		stopTranslateEffects();
 	});
 

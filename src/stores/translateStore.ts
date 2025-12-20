@@ -2,8 +2,8 @@ import { type AIAdapter, chat } from "@tanstack/ai";
 import { createAnthropic } from "@tanstack/ai-anthropic";
 import { createGemini } from "@tanstack/ai-gemini";
 import { createOllama } from "@tanstack/ai-ollama";
-import { createOpenAI } from "@tanstack/ai-openai";
 import { Store } from "@tanstack/react-store";
+import OpenAI from "openai";
 
 import { addTranslateHistory } from "@/db/translateHistoryCollection";
 import { I18N_KEY_PREFIX } from "@/lib/app-i18n";
@@ -516,14 +516,6 @@ export function swapTranslateLanguages() {
 
 function createAdapter(provider: AIProvider): AIAdapter {
 	switch (provider.type) {
-		case "openai": {
-			const key = provider.apiKey?.trim() ?? "";
-			if (!key) {
-				throw new Error(`${I18N_KEY_PREFIX}errors.openaiApiKeyMissing`);
-			}
-			const baseURL = provider.baseUrl?.trim();
-			return createOpenAI(key, baseURL ? { baseURL } : undefined);
-		}
 		case "anthropic": {
 			const key = provider.apiKey?.trim() ?? "";
 			if (!key) {
@@ -543,6 +535,48 @@ function createAdapter(provider: AIProvider): AIAdapter {
 			return createOllama(host || undefined);
 		}
 	}
+
+	throw new Error("Unsupported provider type");
+}
+
+function createOpenAIClient(provider: AIProvider) {
+	const key = provider.apiKey?.trim() ?? "";
+	if (!key) {
+		throw new Error(`${I18N_KEY_PREFIX}errors.openaiApiKeyMissing`);
+	}
+	const baseURL = provider.baseUrl?.trim() ?? "";
+	const config = baseURL
+		? { apiKey: key, baseURL, dangerouslyAllowBrowser: true }
+		: { apiKey: key, dangerouslyAllowBrowser: true };
+	return new OpenAI(config);
+}
+
+async function translateViaOpenAI(options: {
+	provider: AIProvider;
+	model: string;
+	userPrompt: string;
+	systemPrompt: string;
+	abortController?: AbortController;
+}): Promise<string> {
+	const client = createOpenAIClient(options.provider);
+	const messages = [
+		...(options.systemPrompt.trim()
+			? [{ role: "system" as const, content: options.systemPrompt }]
+			: []),
+		{ role: "user" as const, content: options.userPrompt },
+	];
+	const response = await client.chat.completions.create(
+		{
+			model: options.model,
+			messages,
+			temperature: 0.2,
+		},
+		options.abortController
+			? { signal: options.abortController.signal }
+			: undefined,
+	);
+
+	return response.choices[0]?.message?.content?.trim() ?? "";
 }
 
 async function translateViaProvider(options: {
@@ -562,7 +596,6 @@ async function translateViaProvider(options: {
 		abortController,
 	} = options;
 	const model = provider.model;
-	const adapter = createAdapter(provider);
 
 	const userPrompt = [
 		`请将下面的文本从「${langLabel[sourceLang]}」翻译成「${langLabel[targetLang]}」。`,
@@ -571,6 +604,17 @@ async function translateViaProvider(options: {
 		text,
 	].join("\n");
 
+	if (provider.type === "openai") {
+		return translateViaOpenAI({
+			provider,
+			model,
+			userPrompt,
+			systemPrompt,
+			abortController,
+		});
+	}
+
+	const adapter = createAdapter(provider);
 	const messages = [{ role: "user" as const, content: userPrompt }];
 	const systemPrompts = systemPrompt.trim() ? [systemPrompt] : undefined;
 
