@@ -149,4 +149,49 @@ describe("translateHistoryCollection", () => {
 		});
 		expect(key).toBe("1");
 	});
+
+	it("handles errors when clearing legacy localStorage", async () => {
+		const removeItemSpy = vi.fn(() => {
+			throw new Error("localStorage unavailable");
+		});
+
+		vi.stubGlobal("localStorage", {
+			removeItem: removeItemSpy,
+		});
+
+		// Should not throw - error is caught and ignored
+		await expect(
+			import("@/db/translateHistoryCollection"),
+		).resolves.toBeDefined();
+
+		expect(removeItemSpy).toHaveBeenCalledWith("mintranslate.translateHistory");
+	});
+
+	it("uses indexedDB collection when indexedDB is available", async () => {
+		const mockIndexedDB = {};
+		vi.stubGlobal("indexedDB", mockIndexedDB);
+
+		const { translateHistoryCollection } = await import(
+			"@/db/translateHistoryCollection"
+		);
+
+		// Verify collection was created with indexedDB options
+		expect(translateHistoryCollection.utils).toBeDefined();
+		expect(translateHistoryCollection.utils.clearStore).toBeInstanceOf(
+			Function,
+		);
+		expect(translateHistoryCollection.id).toBe("translate-history");
+	});
+
+	it("uses localOnly collection when indexedDB is not available", async () => {
+		vi.stubGlobal("indexedDB", undefined);
+
+		const { translateHistoryCollection } = await import(
+			"@/db/translateHistoryCollection"
+		);
+
+		// LocalOnly collection doesn't have clearStore util
+		expect(translateHistoryCollection.utils.clearStore).toBeUndefined();
+		expect(translateHistoryCollection.id).toBe("translate-history");
+	});
 });
