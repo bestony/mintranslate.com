@@ -33,7 +33,7 @@ export function AppFooter({ className }: { className?: string }) {
 					<a
 						href={GITHUB_REPO_URL}
 						target="_blank"
-						rel="noreferrer"
+						rel="noopener noreferrer"
 						className={linkClassName}
 					>
 						{t("footer.links.github")}
@@ -48,7 +48,7 @@ export function AppFooter({ className }: { className?: string }) {
 					<a
 						href={FEEDBACK_URL}
 						target="_blank"
-						rel="noreferrer"
+						rel="noopener noreferrer"
 						className={linkClassName}
 					>
 						{t("footer.links.feedback")}
@@ -56,7 +56,7 @@ export function AppFooter({ className }: { className?: string }) {
 					<a
 						href={COMMUNITY_URL}
 						target="_blank"
-						rel="noreferrer"
+						rel="noopener noreferrer"
 						className={linkClassName}
 					>
 						{t("footer.links.community")}

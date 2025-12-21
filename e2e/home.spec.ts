@@ -5,6 +5,7 @@ test.describe("home", () => {
 		page,
 	}) => {
 		await page.goto("/");
+		await page.waitForLoadState("networkidle");
 
 		await expect(
 			page.getByRole("heading", { name: "MinTranslate" }),
@@ -29,6 +30,7 @@ test.describe("home", () => {
 
 	test("clears the source textarea", async ({ page }) => {
 		await page.goto("/");
+		await page.waitForLoadState("networkidle");
 
 		const sourceArea = page.getByPlaceholder(
 			/Enter the text you want to translate/i,
@@ -76,6 +78,7 @@ test.describe("home", () => {
 		);
 
 		await page.goto("/");
+		await page.waitForLoadState("networkidle");
 
 		const trigger = page.getByRole("button", {
 			name: "Gemini - gemini-2.5-flash",
