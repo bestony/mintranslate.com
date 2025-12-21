@@ -70,19 +70,19 @@ export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderType, string> = {
 const TRANSLATE_DEBOUNCE_MS = 500;
 
 const langLabel: Record<Lang, string> = {
-	zh: "中文",
-	en: "英文",
-	fr: "法语",
-	ja: "日语",
-	es: "西班牙语",
+	zh: "Chinese",
+	en: "English",
+	fr: "French",
+	ja: "Japanese",
+	es: "Spanish",
 };
 
 export const DEFAULT_SYSTEM_PROMPT = [
-	"你是一个翻译引擎。",
-	"你会将用户输入的文本从指定语言翻译成目标语言。",
-	"要求：",
-	"1) 只输出译文，不要解释，不要加引号，不要添加额外内容。",
-	"2) 保留原文的换行与格式。",
+	"You are a translation engine.",
+	"You translate the user's input from the specified source language to the target language.",
+	"Requirements:",
+	"1) Output only the translation. Do not explain, add quotes, or add extra content.",
+	"2) Preserve the original line breaks and formatting.",
 ].join("\n");
 
 export const translateStore = new Store<TranslateState>({
@@ -598,9 +598,9 @@ async function translateViaProvider(options: {
 	const model = provider.model;
 
 	const userPrompt = [
-		`请将下面的文本从「${langLabel[sourceLang]}」翻译成「${langLabel[targetLang]}」。`,
+		`Translate the following text from "${langLabel[sourceLang]}" to "${langLabel[targetLang]}".`,
 		"",
-		"原文：",
+		"Source text:",
 		text,
 	].join("\n");
 
