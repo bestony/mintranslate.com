@@ -17,6 +17,8 @@ import { appI18n, normalizeAppLanguage, toHtmlLang } from "@/lib/app-i18n";
 
 import appCss from "../styles.css?url";
 
+const GA_ID = "G-GCEXSQSG1G";
+
 export const Route = createRootRoute({
 	head: () => ({
 		meta: [
@@ -48,6 +50,24 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 	const routeLang = normalizeAppLanguage(lang);
 	const locale = routeLang ?? "zh";
 	const htmlLang = toHtmlLang(locale);
+
+	useEffect(() => {
+		if (document.getElementById("ga-gtag")) return;
+
+		const gtagScript = document.createElement("script");
+		gtagScript.async = true;
+		gtagScript.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;
+		gtagScript.id = "ga-gtag";
+		document.head.appendChild(gtagScript);
+
+		const inlineScript = document.createElement("script");
+		inlineScript.id = "ga-gtag-inline";
+		inlineScript.text = `window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag("js", new Date());
+gtag("config", "${GA_ID}");`;
+		document.head.appendChild(inlineScript);
+	}, []);
 
 	return (
 		<html lang={htmlLang} suppressHydrationWarning>
