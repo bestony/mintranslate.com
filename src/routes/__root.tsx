@@ -72,6 +72,11 @@ gtag("config", "${GA_ID}");`;
 	return (
 		<html lang={htmlLang} suppressHydrationWarning>
 			<head>
+				<script
+					async
+					src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9877802927933140"
+					crossOrigin="anonymous"
+				/>
 				<HeadContent />
 			</head>
 			<body className="min-h-screen">
