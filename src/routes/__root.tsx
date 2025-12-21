@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
+import { ThemeProvider } from "next-themes";
 import { AppFooter } from "@/components/AppFooter";
 import { AppI18nHydrator } from "@/components/AppI18nHydrator";
 import { AppSettingsHydrator } from "@/components/AppSettingsHydrator";
@@ -54,13 +55,15 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				<HeadContent />
 			</head>
 			<body className="min-h-screen">
-				<I18nextProvider i18n={appI18n}>
-					<AppI18nHydrator routeLang={routeLang ?? undefined} />
-					<AppSettingsHydrator />
-					{children}
-					<AppFooter />
-					<Toaster richColors closeButton />
-				</I18nextProvider>
+				<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+					<I18nextProvider i18n={appI18n}>
+						<AppI18nHydrator routeLang={routeLang ?? undefined} />
+						<AppSettingsHydrator />
+						{children}
+						<AppFooter />
+						<Toaster richColors closeButton />
+					</I18nextProvider>
+				</ThemeProvider>
 				<Devtools />
 				<Scripts />
 			</body>
