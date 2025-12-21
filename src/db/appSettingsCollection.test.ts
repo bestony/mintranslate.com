@@ -22,6 +22,32 @@ describe("appSettingsCollection", () => {
 		expect(parsed.systemPrompt).toBe("hello");
 	});
 
+	it("rejects invalid settings", () => {
+		expect(() =>
+			appSettingsSchema.parse({
+				id: "app",
+				systemPrompt: 123, // wrong type
+				updatedAt: 123,
+			}),
+		).toThrow();
+	});
+
+	it("validates using safeParse", () => {
+		const valid = appSettingsSchema.safeParse({
+			id: "app",
+			systemPrompt: "test",
+			updatedAt: 456,
+		});
+		expect(valid.success).toBe(true);
+
+		const invalid = appSettingsSchema.safeParse({
+			id: "app",
+			systemPrompt: 123,
+			updatedAt: 456,
+		});
+		expect(invalid.success).toBe(false);
+	});
+
 	it("derives collection keys from item id", () => {
 		const key = appSettingsCollection.getKeyFromItem({
 			id: "app",
