@@ -56,8 +56,10 @@ import {
 } from "@/lib/app-i18n";
 import { copyToClipboard } from "@/lib/clipboard";
 import { detectDocsLanguage } from "@/lib/docs-language";
+import { formatProviderLabel } from "@/lib/provider-label";
 import {
 	type Lang,
+	setDefaultProvider,
 	setLeftText,
 	setSourceLang,
 	setTargetLang,
@@ -119,6 +121,10 @@ function App() {
 		if (defaultProvider.type === "ollama") return true;
 		return Boolean(defaultProvider.apiKey?.trim());
 	})();
+	const defaultProviderLabel = formatProviderLabel(
+		defaultProvider,
+		t("home.ui.badges.noProvider"),
+	);
 
 	return (
 		<div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
@@ -376,12 +382,35 @@ function App() {
 								{t("common.units.characters", { count: rightText.length })}
 							</p>
 
-							<Button asChild type="button" variant="ghost" size="sm">
-								<Link to="/settings">
-									<Settings2Icon />
-									{t("home.ui.buttons.provider")}
-								</Link>
-							</Button>
+							<DropdownMenu>
+								<DropdownMenuTrigger asChild>
+									<Button type="button" variant="ghost" size="sm">
+										<Settings2Icon />
+										{defaultProviderLabel}
+									</Button>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent align="end" className="min-w-[220px]">
+									{providers.length ? (
+										providers.map((provider) => (
+											<DropdownMenuItem
+												key={provider.id}
+												onSelect={() => setDefaultProvider(provider.id)}
+											>
+												{provider.name} - {provider.model}
+											</DropdownMenuItem>
+										))
+									) : (
+										<DropdownMenuItem disabled>
+											{t("home.ui.badges.noProvider")}
+										</DropdownMenuItem>
+									)}
+									<DropdownMenuItem asChild>
+										<Link to="/settings">
+											{t("home.ui.buttons.editModelSettings")}
+										</Link>
+									</DropdownMenuItem>
+								</DropdownMenuContent>
+							</DropdownMenu>
 						</CardFooter>
 					</Card>
 				</div>

@@ -216,6 +216,7 @@ export const zh = {
 				noProvider: "未配置 Provider",
 			},
 			buttons: {
+				editModelSettings: "编辑模型设置",
 				manageProvider: "设置",
 				provider: "Provider",
 				setupProvider: "Quick Start",

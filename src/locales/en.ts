@@ -223,6 +223,7 @@ export const en = {
 				noProvider: "No provider configured",
 			},
 			buttons: {
+				editModelSettings: "Edit Model Settings",
 				manageProvider: "Settings",
 				provider: "Provider",
 				setupProvider: "Quick Start",
