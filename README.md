@@ -47,6 +47,14 @@ Then open `http://localhost:3000`.
 
 For more details, see https://minTranslate.com/en/docs/development/contributing
 
+## Contributors
+
+<a href="https://github.com/bestony/mintranslate.com/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=bestony/mintranslate.com" />
+</a>
+
+Made with [contrib.rocks](https://contrib.rocks).
+
 ## License
 
 AGPL-3.0. See `LICENSE`.
