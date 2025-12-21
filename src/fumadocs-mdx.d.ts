@@ -7,6 +7,15 @@ declare module "fumadocs-mdx:collections/server" {
 }
 
 declare module "fumadocs-mdx:collections/browser" {
-	const collections: any;
+	import type { DocCollectionEntry } from "fumadocs-mdx/runtime/browser";
+
+	type DocsFrontmatter = {
+		title?: string;
+		description?: string;
+	};
+
+	const collections: {
+		docs: DocCollectionEntry<string, DocsFrontmatter>;
+	};
 	export default collections;
 }

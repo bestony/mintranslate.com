@@ -94,7 +94,7 @@ test.describe("home", () => {
 			name: "Edit Model Settings",
 		});
 		await expect(settingsLink).toBeVisible();
-		await expect(settingsLink.locator("a")).toHaveAttribute("href", "/settings");
+		await expect(settingsLink).toHaveAttribute("href", "/settings");
 
 		await page.getByRole("menuitem", { name: "OpenAI - gpt-4.1-mini" }).click();
 		await expect(

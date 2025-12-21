@@ -3,6 +3,7 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { useFumadocsLoader } from "fumadocs-core/source/client";
 import type { TOCItemType } from "fumadocs-core/toc";
+import type { CompiledMDXProperties } from "fumadocs-mdx";
 import { defineI18nUI } from "fumadocs-ui/i18n";
 import { DocsLayout } from "fumadocs-ui/layouts/docs";
 import {
@@ -13,7 +14,6 @@ import {
 } from "fumadocs-ui/layouts/docs/page";
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import { RootProvider } from "fumadocs-ui/provider/tanstack";
-import type { ComponentType } from "react";
 import { i18n } from "@/lib/i18n";
 import { baseOptions } from "@/lib/layout.shared";
 import { source } from "@/lib/source";
@@ -77,9 +77,9 @@ const clientLoader = browserCollections.docs.createClientLoader({
 		frontmatter,
 		default: MDX,
 	}: {
-		toc?: TOCItemType[];
+		toc: TOCItemType[];
 		frontmatter: { title?: string; description?: string };
-		default: ComponentType<{ components?: Record<string, unknown> }>;
+		default: CompiledMDXProperties["default"];
 	}) {
 		return (
 			<DocsPage toc={toc}>

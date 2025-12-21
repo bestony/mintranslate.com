@@ -5,9 +5,9 @@ import {
 	Scripts,
 	useParams,
 } from "@tanstack/react-router";
+import { ThemeProvider } from "next-themes";
 import { useEffect, useState } from "react";
 import { I18nextProvider, useTranslation } from "react-i18next";
-import { ThemeProvider } from "next-themes";
 import { AppFooter } from "@/components/AppFooter";
 import { AppI18nHydrator } from "@/components/AppI18nHydrator";
 import { AppSettingsHydrator } from "@/components/AppSettingsHydrator";
