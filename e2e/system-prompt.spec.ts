@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { DEFAULT_SYSTEM_PROMPT } from "../src/stores/translateStore";
 
 test.describe("Settings - System Prompt Configuration", () => {
 	test("displays default system prompt on first visit", async ({ page }) => {
@@ -18,8 +19,7 @@ test.describe("Settings - System Prompt Configuration", () => {
 		});
 		await expect(promptTextarea).toBeVisible();
 
-		const promptValue = await promptTextarea.inputValue();
-		expect(promptValue).toContain("你是一个翻译引擎");
+		await expect(promptTextarea).toHaveValue(DEFAULT_SYSTEM_PROMPT);
 	});
 
 	test("edits and saves custom system prompt", async ({ page }) => {
@@ -75,8 +75,7 @@ test.describe("Settings - System Prompt Configuration", () => {
 		await systemPromptCard.getByRole("button", { name: /reset to default/i }).click();
 
 		// Verify prompt is reset to default
-		const promptValue = await promptTextarea.inputValue();
-		expect(promptValue).toContain("你是一个翻译引擎");
+		await expect(promptTextarea).toHaveValue(DEFAULT_SYSTEM_PROMPT);
 	});
 
 	test("shows character count for system prompt", async ({ page }) => {
@@ -170,7 +169,6 @@ test.describe("Settings - System Prompt Configuration", () => {
 		await page.getByRole("button", { name: /reset to default/i }).click();
 
 		// Verify default prompt is shown
-		const promptValue = await promptTextarea.inputValue();
-		expect(promptValue).toContain("你是一个翻译引擎");
+		await expect(promptTextarea).toHaveValue(DEFAULT_SYSTEM_PROMPT);
 	});
 });
