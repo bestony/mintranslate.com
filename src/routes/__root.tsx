@@ -18,6 +18,10 @@ import { appI18n, normalizeAppLanguage, toHtmlLang } from "@/lib/app-i18n";
 import appCss from "../styles.css?url";
 
 const GA_ID = "G-GCEXSQSG1G";
+const SEO_TITLE =
+	"MinTranslate - Google Translator Alternative & DeepL Translator Alternative";
+const SEO_DESCRIPTION =
+	"MinTranslate is a minimal AI translator, a Google Translator Alternative & DeepL Translator Alternative.";
 
 export const Route = createRootRoute({
 	head: () => ({
@@ -30,7 +34,31 @@ export const Route = createRootRoute({
 				content: "width=device-width, initial-scale=1",
 			},
 			{
-				title: "MinTranslate",
+				title: SEO_TITLE,
+			},
+			{
+				name: "description",
+				content: SEO_DESCRIPTION,
+			},
+			{
+				property: "og:title",
+				content: SEO_TITLE,
+			},
+			{
+				property: "og:description",
+				content: SEO_DESCRIPTION,
+			},
+			{
+				name: "twitter:card",
+				content: "summary",
+			},
+			{
+				name: "twitter:title",
+				content: SEO_TITLE,
+			},
+			{
+				name: "twitter:description",
+				content: SEO_DESCRIPTION,
 			},
 		],
 		links: [
