@@ -1,0 +1,26 @@
+diff --git a/dist/esm/anthropic-adapter.js b/dist/esm/anthropic-adapter.js
+index 73373e23b0d5d88ab8e35b1f8a524aa87f8fb985..3d1444fb22e2f85952c7b001ef530408d639254f 100644
+--- a/dist/esm/anthropic-adapter.js
++++ b/dist/esm/anthropic-adapter.js
+@@ -9,7 +9,8 @@ class Anthropic extends BaseAdapter {
+     this.name = "anthropic";
+     this.models = ANTHROPIC_MODELS;
+     this.client = new Anthropic_SDK({
+-      apiKey: config.apiKey
++      apiKey: config.apiKey,
++      dangerouslyAllowBrowser: true
+     });
+   }
+   async *chatStream(options) {
+diff --git a/src/anthropic-adapter.ts b/src/anthropic-adapter.ts
+index edfcea791fcacf253966df1568424c83554c0c72..b1f8649cc318440f3c8ba36400fd95e0bc914535 100644
+--- a/src/anthropic-adapter.ts
++++ b/src/anthropic-adapter.ts
+@@ -77,6 +77,7 @@ export class Anthropic extends BaseAdapter<
+     super({})
+     this.client = new Anthropic_SDK({
+       apiKey: config.apiKey,
++      dangerouslyAllowBrowser: true,
+     })
+   }
+ 

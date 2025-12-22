@@ -58,6 +58,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.4",
+    "@playwright/test": "^1.49.0",
     "@tailwindcss/vite": "^4.0.6",
     "@tanstack/devtools-vite": "^0.3.11",
     "@tanstack/react-ai-devtools": "^0.0.3",
@@ -66,7 +67,6 @@
     "@tanstack/router-plugin": "^1.132.0",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.2.0",
-    "@playwright/test": "^1.49.0",
     "@types/mdx": "^2.0.13",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.0",
@@ -85,5 +85,8 @@
     "vite": "^7.1.7",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^3.0.5"
+  },
+  "patchedDependencies": {
+    "@tanstack/ai-anthropic@0.0.3": "patches/@tanstack%2Fai-anthropic@0.0.3.patch"
   }
 }
