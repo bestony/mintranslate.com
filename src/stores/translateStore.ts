@@ -658,6 +658,22 @@ function abortOngoingTranslation() {
 	translateAbortController = null;
 }
 
+function hasTranslateInputsChanged(
+	state: TranslateState,
+	prevState: TranslateState | null,
+) {
+	if (!prevState) return true;
+
+	return (
+		state.defaultProviderId !== prevState.defaultProviderId ||
+		state.systemPrompt !== prevState.systemPrompt ||
+		state.debouncedLeftText !== prevState.debouncedLeftText ||
+		state.leftLang !== prevState.leftLang ||
+		state.rightLang !== prevState.rightLang ||
+		getActiveProvider(state)?.id !== getActiveProvider(prevState)?.id
+	);
+}
+
 export function stopTranslateEffects() {
 	if (!unsubscribeEffects) return;
 
@@ -691,14 +707,10 @@ export function startTranslateEffects() {
 			}, TRANSLATE_DEBOUNCE_MS);
 		}
 
-		const didTranslateInputsChange =
-			!prevState ||
-			state.providers !== prevState.providers ||
-			state.defaultProviderId !== prevState.defaultProviderId ||
-			state.systemPrompt !== prevState.systemPrompt ||
-			state.debouncedLeftText !== prevState.debouncedLeftText ||
-			state.leftLang !== prevState.leftLang ||
-			state.rightLang !== prevState.rightLang;
+		const didTranslateInputsChange = hasTranslateInputsChanged(
+			state,
+			prevState,
+		);
 
 		if (!didTranslateInputsChange) return;
 
