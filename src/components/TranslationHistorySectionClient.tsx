@@ -21,18 +21,12 @@ import {
 import { translateHistoryCollection } from "@/db/translateHistoryCollection";
 import { normalizeAppLanguage } from "@/lib/app-i18n";
 import { copyToClipboard } from "@/lib/clipboard";
-import type { Lang } from "@/stores/translateStore";
+import { useLangLabels } from "@/lib/language-labels";
 
 export default function TranslationHistorySectionClient() {
 	const { t, i18n } = useTranslation();
 	const uiLang = normalizeAppLanguage(i18n.resolvedLanguage) ?? "zh";
-	const langLabel: Record<Lang, string> = {
-		zh: t("common.languages.zh"),
-		en: t("common.languages.en"),
-		fr: t("common.languages.fr"),
-		ja: t("common.languages.ja"),
-		es: t("common.languages.es"),
-	};
+	const langLabel = useLangLabels();
 
 	const { data, isLoading } = useLiveQuery(() => translateHistoryCollection);
 
