@@ -667,13 +667,16 @@ function hasTranslateInputsChanged(
 ) {
 	if (!prevState) return true;
 
+	const activeProvider = getActiveProvider(state);
+	const prevActiveProvider = getActiveProvider(prevState);
+
 	return (
 		state.defaultProviderId !== prevState.defaultProviderId ||
 		state.systemPrompt !== prevState.systemPrompt ||
 		state.debouncedLeftText !== prevState.debouncedLeftText ||
 		state.leftLang !== prevState.leftLang ||
 		state.rightLang !== prevState.rightLang ||
-		getActiveProvider(state)?.id !== getActiveProvider(prevState)?.id
+		JSON.stringify(activeProvider) !== JSON.stringify(prevActiveProvider)
 	);
 }
 
