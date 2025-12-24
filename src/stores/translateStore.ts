@@ -154,6 +154,15 @@ function requiresApiKey(providerType: ProviderType) {
 	return providerType !== "ollama";
 }
 
+function validateProviderApiKey(provider: AIProvider): void {
+	if (requiresApiKey(provider.type)) {
+		const key = provider.apiKey?.trim();
+		if (!key) {
+			throw new Error(`${I18N_KEY_PREFIX}errors.${provider.type}ApiKeyMissing`);
+		}
+	}
+}
+
 function getActiveProvider(state: TranslateState) {
 	if (!state.defaultProviderId) return null;
 	return state.providers.find((p) => p.id === state.defaultProviderId) ?? null;
@@ -517,17 +526,13 @@ export function swapTranslateLanguages() {
 function createAdapter(provider: AIProvider): AIAdapter {
 	switch (provider.type) {
 		case "anthropic": {
+			validateProviderApiKey(provider);
 			const key = provider.apiKey?.trim() ?? "";
-			if (!key) {
-				throw new Error(`${I18N_KEY_PREFIX}errors.anthropicApiKeyMissing`);
-			}
 			return createAnthropic(key);
 		}
 		case "gemini": {
+			validateProviderApiKey(provider);
 			const key = provider.apiKey?.trim() ?? "";
-			if (!key) {
-				throw new Error(`${I18N_KEY_PREFIX}errors.geminiApiKeyMissing`);
-			}
 			return createGemini(key);
 		}
 		case "ollama": {
@@ -540,10 +545,8 @@ function createAdapter(provider: AIProvider): AIAdapter {
 }
 
 function createOpenAIClient(provider: AIProvider) {
+	validateProviderApiKey(provider);
 	const key = provider.apiKey?.trim() ?? "";
-	if (!key) {
-		throw new Error(`${I18N_KEY_PREFIX}errors.openaiApiKeyMissing`);
-	}
 	const baseURL = provider.baseUrl?.trim() ?? "";
 	const config = baseURL
 		? { apiKey: key, baseURL, dangerouslyAllowBrowser: true }
