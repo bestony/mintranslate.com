@@ -653,13 +653,33 @@ async function translateViaProvider(options: {
 
 let unsubscribeEffects: (() => void) | null = null;
 let debounceTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
-let translateAbortController: AbortController | null = null;
-let translateReqId = 0;
 
-function abortOngoingTranslation() {
-	translateAbortController?.abort();
-	translateAbortController = null;
+class TranslateRequestManager {
+	abortController: AbortController | null = null;
+	#reqId = 0;
+
+	abort(markStale = false) {
+		this.abortController?.abort();
+		this.abortController = null;
+		if (markStale) {
+			this.#reqId += 1;
+		}
+	}
+
+	start() {
+		this.abort();
+		const controller = new AbortController();
+		this.abortController = controller;
+		const reqId = ++this.#reqId;
+		return { controller, reqId } as const;
+	}
+
+	isStale(reqId: number, controller: AbortController) {
+		return controller.signal.aborted || reqId !== this.#reqId;
+	}
 }
+
+const translateRequestManager = new TranslateRequestManager();
 
 function hasTranslateInputsChanged(
 	state: TranslateState,
@@ -691,7 +711,7 @@ export function stopTranslateEffects() {
 		debounceTimer = null;
 	}
 
-	abortOngoingTranslation();
+	translateRequestManager.abort(true);
 	setIsTranslating(false);
 }
 
@@ -722,7 +742,7 @@ export function startTranslateEffects() {
 
 		const activeProvider = getActiveProvider(state);
 		if (!activeProvider) {
-			abortOngoingTranslation();
+			translateRequestManager.abort(true);
 			setIsTranslating(false);
 			setTranslateError("");
 			return;
@@ -730,14 +750,14 @@ export function startTranslateEffects() {
 
 		const key = activeProvider.apiKey?.trim() ?? "";
 		if (requiresApiKey(activeProvider.type) && !key) {
-			abortOngoingTranslation();
+			translateRequestManager.abort(true);
 			setIsTranslating(false);
 			setTranslateError("");
 			return;
 		}
 
 		if (!state.debouncedLeftText.trim()) {
-			abortOngoingTranslation();
+			translateRequestManager.abort(true);
 			setIsTranslating(false);
 			setTranslateError("");
 			setRightText("");
@@ -745,18 +765,14 @@ export function startTranslateEffects() {
 		}
 
 		if (state.leftLang === state.rightLang) {
-			abortOngoingTranslation();
+			translateRequestManager.abort(true);
 			setIsTranslating(false);
 			setTranslateError("");
 			setRightText(state.debouncedLeftText);
 			return;
 		}
 
-		abortOngoingTranslation();
-		const controller = new AbortController();
-		translateAbortController = controller;
-
-		const reqId = ++translateReqId;
+		const { controller, reqId } = translateRequestManager.start();
 		setIsTranslating(true);
 		setTranslateError("");
 
@@ -775,8 +791,7 @@ export function startTranslateEffects() {
 			abortController: controller,
 		})
 			.then((translated) => {
-				if (controller.signal.aborted) return;
-				if (translateReqId !== reqId) return;
+				if (translateRequestManager.isStale(reqId, controller)) return;
 				setRightText(translated);
 				try {
 					addTranslateHistory({
@@ -790,8 +805,7 @@ export function startTranslateEffects() {
 				}
 			})
 			.catch((err) => {
-				if (controller.signal.aborted) return;
-				if (translateReqId !== reqId) return;
+				if (translateRequestManager.isStale(reqId, controller)) return;
 				const msg =
 					err instanceof Error && err.message
 						? err.message
@@ -799,8 +813,8 @@ export function startTranslateEffects() {
 				setTranslateError(msg);
 			})
 			.finally(() => {
-				if (controller.signal.aborted) return;
-				if (translateReqId !== reqId) return;
+				if (translateRequestManager.isStale(reqId, controller)) return;
+				translateRequestManager.abortController = null;
 				setIsTranslating(false);
 			});
 	});
