@@ -22,12 +22,26 @@ const SEO_TITLE =
 	"MinTranslate - Google Translator Alternative & DeepL Translator Alternative";
 const SEO_DESCRIPTION =
 	"MinTranslate is a minimal AI translator, a Google Translator Alternative & DeepL Translator Alternative.";
+const CONTENT_SECURITY_POLICY = [
+	"default-src 'self'",
+	"base-uri 'self'",
+	"object-src 'none'",
+	"script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://tpc.googlesyndication.com https://securepubads.g.doubleclick.net",
+	"style-src 'self' 'unsafe-inline'",
+	"img-src 'self' data: https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google-analytics.com https://stats.g.doubleclick.net",
+	"connect-src 'self' https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://www.google-analytics.com https://region1.google-analytics.com https://stats.g.doubleclick.net https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com http://localhost:11434 http://127.0.0.1:11434",
+	"frame-src https://googleads.g.doubleclick.net https://tpc.googlesyndication.com",
+].join("; ");
 
 export const Route = createRootRoute({
 	head: () => ({
 		meta: [
 			{
 				charSet: "utf-8",
+			},
+			{
+				httpEquiv: "Content-Security-Policy",
+				content: CONTENT_SECURITY_POLICY,
 			},
 			{
 				name: "viewport",
@@ -100,12 +114,12 @@ gtag("config", "${GA_ID}");`;
 	return (
 		<html lang={htmlLang} suppressHydrationWarning>
 			<head>
+				<HeadContent />
 				<script
 					async
 					src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9877802927933140"
 					crossOrigin="anonymous"
 				/>
-				<HeadContent />
 			</head>
 			<body className="min-h-screen">
 				<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
