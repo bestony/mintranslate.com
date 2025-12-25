@@ -104,6 +104,81 @@ afterEach(() => {
 });
 
 describe("translateStore", () => {
+	it("initializes systemPrompt from persisted localStorage settings", async () => {
+		vi.resetModules();
+
+		window.localStorage.setItem(
+			"mintranslate.appSettings",
+			JSON.stringify({
+				app: { data: { systemPrompt: "persisted prompt" } },
+			}),
+		);
+
+		const mod = await import("@/stores/translateStore");
+		expect(mod.translateStore.state.systemPrompt).toBe("persisted prompt");
+	});
+
+	it("falls back to DEFAULT_SYSTEM_PROMPT when persisted settings are malformed", async () => {
+		vi.resetModules();
+
+		window.localStorage.setItem("mintranslate.appSettings", "{not-json");
+
+		const mod = await import("@/stores/translateStore");
+		expect(mod.translateStore.state.systemPrompt).toBe(
+			mod.DEFAULT_SYSTEM_PROMPT,
+		);
+	});
+
+	it("uses DEFAULT_SYSTEM_PROMPT when window is undefined during hydration", async () => {
+		vi.resetModules();
+
+		const originalWindow = globalThis.window;
+		// simulate SSR before module load
+		delete (globalThis as unknown as { window?: Window }).window;
+
+		try {
+			const mod = await import("@/stores/translateStore");
+			expect(mod.translateStore.state.systemPrompt).toBe(
+				mod.DEFAULT_SYSTEM_PROMPT,
+			);
+		} finally {
+			Object.defineProperty(globalThis, "window", {
+				value: originalWindow,
+				configurable: true,
+			});
+		}
+	});
+
+	it("ignores persisted systemPrompt when storage value is not an object", async () => {
+		vi.resetModules();
+
+		window.localStorage.setItem(
+			"mintranslate.appSettings",
+			JSON.stringify("string"),
+		);
+		let mod = await import("@/stores/translateStore");
+		expect(mod.translateStore.state.systemPrompt).toBe(
+			mod.DEFAULT_SYSTEM_PROMPT,
+		);
+
+		vi.resetModules();
+		window.localStorage.setItem(
+			"mintranslate.appSettings",
+			JSON.stringify({ a: "nope", b: { data: "still nope" } }),
+		);
+		mod = await import("@/stores/translateStore");
+		expect(mod.translateStore.state.systemPrompt).toBe(
+			mod.DEFAULT_SYSTEM_PROMPT,
+		);
+
+		vi.resetModules();
+		window.localStorage.setItem("mintranslate.appSettings", "{bad-json");
+		mod = await import("@/stores/translateStore");
+		expect(mod.translateStore.state.systemPrompt).toBe(
+			mod.DEFAULT_SYSTEM_PROMPT,
+		);
+	});
+
 	it("patchTranslateState merges partial state", async () => {
 		const { patchTranslateState, translateStore } = await importFreshStore();
 
@@ -1194,6 +1269,28 @@ describe("translateStore", () => {
 		).resolves.toBe("");
 	});
 
+	it("translateViaProvider returns empty string when OpenAI response lacks content", async () => {
+		const { __test__ } = await importFreshStore();
+
+		openAIChatCompletionsCreateMock.mockResolvedValue({ choices: [] });
+
+		await expect(
+			__test__.translateViaProvider({
+				provider: {
+					id: "oai",
+					type: "openai",
+					name: "OpenAI",
+					model: "gpt",
+					apiKey: "k",
+				},
+				text: "hi",
+				sourceLang: "en",
+				targetLang: "zh",
+				systemPrompt: "",
+			}),
+		).resolves.toBe("");
+	});
+
 	it("translateViaProvider throws when api key is missing for OpenAI/Anthropic/Gemini", async () => {
 		const { __test__ } = await importFreshStore();
 
@@ -1285,6 +1382,14 @@ describe("translateStore", () => {
 				role: "user",
 				content: expect.stringContaining("hi"),
 			}),
+		);
+	});
+
+	it("hasTranslateInputsChanged returns true when previous state is null", async () => {
+		const { __test__, translateStore } = await importFreshStore();
+
+		expect(__test__.hasTranslateInputsChanged(translateStore.state, null)).toBe(
+			true,
 		);
 	});
 
