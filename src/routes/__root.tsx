@@ -62,10 +62,6 @@ export const Route = createRootRoute({
 				charSet: "utf-8",
 			},
 			{
-				httpEquiv: "Content-Security-Policy",
-				content: CONTENT_SECURITY_POLICY,
-			},
-			{
 				name: "viewport",
 				content: "width=device-width, initial-scale=1",
 			},
@@ -96,6 +92,14 @@ export const Route = createRootRoute({
 				name: "twitter:description",
 				content: SEO_DESCRIPTION,
 			},
+			...(import.meta.env.PROD
+				? [
+						{
+							httpEquiv: "Content-Security-Policy",
+							content: CONTENT_SECURITY_POLICY,
+						},
+					]
+				: []),
 		],
 		links: [
 			{
@@ -112,7 +116,7 @@ export const Route = createRootRoute({
 function RootDocument({ children }: { children: React.ReactNode }) {
 	const { lang } = useParams({ strict: false });
 	const routeLang = normalizeAppLanguage(lang);
-	const locale = routeLang ?? "zh";
+	const locale = routeLang ?? "en";
 	const htmlLang = toHtmlLang(locale);
 	const [allowTracking, setAllowTracking] = useState(false);
 

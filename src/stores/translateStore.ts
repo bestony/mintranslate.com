@@ -5,6 +5,7 @@ import { createOllama } from "@tanstack/ai-ollama";
 import { Store } from "@tanstack/react-store";
 import OpenAI from "openai";
 
+import { APP_SETTINGS_STORAGE_KEY } from "@/db/appSettingsCollection";
 import { addTranslateHistory } from "@/db/translateHistoryCollection";
 import { I18N_KEY_PREFIX } from "@/lib/app-i18n";
 
@@ -85,11 +86,39 @@ export const DEFAULT_SYSTEM_PROMPT = [
 	"2) Preserve the original line breaks and formatting.",
 ].join("\n");
 
+function readPersistedSystemPrompt(): string | null {
+	if (typeof window === "undefined") return null;
+
+	try {
+		const raw = globalThis.localStorage?.getItem(APP_SETTINGS_STORAGE_KEY);
+		if (!raw) return null;
+
+		const parsed = JSON.parse(raw) as unknown;
+		if (!parsed || typeof parsed !== "object") return null;
+
+		const values = Object.values(parsed as Record<string, unknown>);
+		for (const value of values) {
+			if (!value || typeof value !== "object") continue;
+			const record = value as { data?: unknown };
+			const data = record.data;
+			if (!data || typeof data !== "object") continue;
+			const maybeSystemPrompt = (data as Record<string, unknown>).systemPrompt;
+			if (typeof maybeSystemPrompt === "string") {
+				return maybeSystemPrompt;
+			}
+		}
+	} catch {
+		// ignore malformed storage
+	}
+
+	return null;
+}
+
 export const translateStore = new Store<TranslateState>({
 	providers: [],
 	defaultProviderId: "",
 
-	systemPrompt: DEFAULT_SYSTEM_PROMPT,
+	systemPrompt: readPersistedSystemPrompt() ?? DEFAULT_SYSTEM_PROMPT,
 
 	leftLang: "zh",
 	rightLang: "en",
