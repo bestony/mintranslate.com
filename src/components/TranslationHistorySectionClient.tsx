@@ -1,7 +1,7 @@
+import { count } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
 import { Link } from "@tanstack/react-router";
 import { CopyIcon } from "lucide-react";
-import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -21,38 +21,34 @@ import {
 import { translateHistoryCollection } from "@/db/translateHistoryCollection";
 import { normalizeAppLanguage } from "@/lib/app-i18n";
 import { copyToClipboard } from "@/lib/clipboard";
-import type { Lang } from "@/stores/translateStore";
+import { useLangLabels } from "@/lib/language-labels";
 
 export default function TranslationHistorySectionClient() {
 	const { t, i18n } = useTranslation();
 	const uiLang = normalizeAppLanguage(i18n.resolvedLanguage) ?? "zh";
-	const langLabel: Record<Lang, string> = {
-		zh: t("common.languages.zh"),
-		en: t("common.languages.en"),
-		fr: t("common.languages.fr"),
-		ja: t("common.languages.ja"),
-		es: t("common.languages.es"),
-	};
+	const langLabel = useLangLabels();
 
-	const { data, isLoading } = useLiveQuery(() => translateHistoryCollection);
+	const { data: latestItems, isLoading } = useLiveQuery((q) =>
+		q
+			.from({ history: translateHistoryCollection })
+			.orderBy(({ history }) => history.createdAt, "desc")
+			.limit(3)
+			.select(({ history }) => ({ ...history })),
+	);
 
-	const { items, total, subtitle } = useMemo(() => {
-		const sorted = (data ?? [])
-			.slice()
-			.sort((a, b) => b.createdAt - a.createdAt);
-		const totalCount = sorted.length;
-		const last3 = sorted.slice(0, 3);
-		const caption =
-			totalCount > 3
-				? t("home.history.caption.last3")
-				: t("home.history.caption.total", { count: totalCount });
+	const { data: totalRow } = useLiveQuery((q) =>
+		q
+			.from({ history: translateHistoryCollection })
+			.select(({ history }) => ({ total: count(history.id) }))
+			.findOne(),
+	);
 
-		return {
-			items: last3,
-			total: totalCount,
-			subtitle: caption,
-		};
-	}, [data, t]);
+	const items = latestItems ?? [];
+	const total = totalRow?.total ?? 0;
+	const subtitle =
+		total > 3
+			? t("home.history.caption.last3")
+			: t("home.history.caption.total", { count: total });
 
 	return (
 		<Card className="mt-10 gap-4 py-4">

@@ -5,6 +5,7 @@ import { createOllama } from "@tanstack/ai-ollama";
 import { Store } from "@tanstack/react-store";
 import OpenAI from "openai";
 
+import { APP_SETTINGS_STORAGE_KEY } from "@/db/appSettingsCollection";
 import { addTranslateHistory } from "@/db/translateHistoryCollection";
 import { I18N_KEY_PREFIX } from "@/lib/app-i18n";
 
@@ -85,11 +86,39 @@ export const DEFAULT_SYSTEM_PROMPT = [
 	"2) Preserve the original line breaks and formatting.",
 ].join("\n");
 
+function readPersistedSystemPrompt(): string | null {
+	if (typeof window === "undefined") return null;
+
+	try {
+		const raw = globalThis.localStorage?.getItem(APP_SETTINGS_STORAGE_KEY);
+		if (!raw) return null;
+
+		const parsed = JSON.parse(raw) as unknown;
+		if (!parsed || typeof parsed !== "object") return null;
+
+		const values = Object.values(parsed as Record<string, unknown>);
+		for (const value of values) {
+			if (!value || typeof value !== "object") continue;
+			const record = value as { data?: unknown };
+			const data = record.data;
+			if (!data || typeof data !== "object") continue;
+			const maybeSystemPrompt = (data as Record<string, unknown>).systemPrompt;
+			if (typeof maybeSystemPrompt === "string") {
+				return maybeSystemPrompt;
+			}
+		}
+	} catch {
+		// ignore malformed storage
+	}
+
+	return null;
+}
+
 export const translateStore = new Store<TranslateState>({
 	providers: [],
 	defaultProviderId: "",
 
-	systemPrompt: DEFAULT_SYSTEM_PROMPT,
+	systemPrompt: readPersistedSystemPrompt() ?? DEFAULT_SYSTEM_PROMPT,
 
 	leftLang: "zh",
 	rightLang: "en",
@@ -152,6 +181,15 @@ function safeLocalStorageSet(key: string, value: string) {
 
 function requiresApiKey(providerType: ProviderType) {
 	return providerType !== "ollama";
+}
+
+function validateProviderApiKey(provider: AIProvider): void {
+	if (requiresApiKey(provider.type)) {
+		const key = provider.apiKey?.trim();
+		if (!key) {
+			throw new Error(`${I18N_KEY_PREFIX}errors.${provider.type}ApiKeyMissing`);
+		}
+	}
 }
 
 function getActiveProvider(state: TranslateState) {
@@ -517,17 +555,13 @@ export function swapTranslateLanguages() {
 function createAdapter(provider: AIProvider): AIAdapter {
 	switch (provider.type) {
 		case "anthropic": {
-			const key = provider.apiKey?.trim() ?? "";
-			if (!key) {
-				throw new Error(`${I18N_KEY_PREFIX}errors.anthropicApiKeyMissing`);
-			}
+			validateProviderApiKey(provider);
+			const key = provider.apiKey!.trim();
 			return createAnthropic(key);
 		}
 		case "gemini": {
-			const key = provider.apiKey?.trim() ?? "";
-			if (!key) {
-				throw new Error(`${I18N_KEY_PREFIX}errors.geminiApiKeyMissing`);
-			}
+			validateProviderApiKey(provider);
+			const key = provider.apiKey!.trim();
 			return createGemini(key);
 		}
 		case "ollama": {
@@ -540,10 +574,8 @@ function createAdapter(provider: AIProvider): AIAdapter {
 }
 
 function createOpenAIClient(provider: AIProvider) {
-	const key = provider.apiKey?.trim() ?? "";
-	if (!key) {
-		throw new Error(`${I18N_KEY_PREFIX}errors.openaiApiKeyMissing`);
-	}
+	validateProviderApiKey(provider);
+	const key = provider.apiKey!.trim();
 	const baseURL = provider.baseUrl?.trim() ?? "";
 	const config = baseURL
 		? { apiKey: key, baseURL, dangerouslyAllowBrowser: true }
@@ -650,12 +682,60 @@ async function translateViaProvider(options: {
 
 let unsubscribeEffects: (() => void) | null = null;
 let debounceTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
-let translateAbortController: AbortController | null = null;
-let translateReqId = 0;
 
-function abortOngoingTranslation() {
-	translateAbortController?.abort();
-	translateAbortController = null;
+class TranslateRequestManager {
+	abortController: AbortController | null = null;
+	#reqId = 0;
+	#staleIncremented = false;
+
+	abort(markStale = false) {
+		this.abortController?.abort();
+		this.abortController = null;
+		if (markStale) {
+			this.#reqId += 1;
+			this.#staleIncremented = true;
+		}
+	}
+
+	start() {
+		this.abort();
+		const controller = new AbortController();
+		this.abortController = controller;
+
+		if (!this.#staleIncremented) {
+			this.#reqId += 1;
+		} else {
+			this.#staleIncremented = false;
+		}
+
+		const reqId = this.#reqId;
+		return { controller, reqId } as const;
+	}
+
+	isStale(reqId: number, controller: AbortController) {
+		return controller.signal.aborted || reqId !== this.#reqId;
+	}
+}
+
+const translateRequestManager = new TranslateRequestManager();
+
+function hasTranslateInputsChanged(
+	state: TranslateState,
+	prevState: TranslateState | null,
+) {
+	if (!prevState) return true;
+
+	const activeProvider = getActiveProvider(state);
+	const prevActiveProvider = getActiveProvider(prevState);
+
+	return (
+		state.defaultProviderId !== prevState.defaultProviderId ||
+		state.systemPrompt !== prevState.systemPrompt ||
+		state.debouncedLeftText !== prevState.debouncedLeftText ||
+		state.leftLang !== prevState.leftLang ||
+		state.rightLang !== prevState.rightLang ||
+		JSON.stringify(activeProvider) !== JSON.stringify(prevActiveProvider)
+	);
 }
 
 export function stopTranslateEffects() {
@@ -669,7 +749,7 @@ export function stopTranslateEffects() {
 		debounceTimer = null;
 	}
 
-	abortOngoingTranslation();
+	translateRequestManager.abort(true);
 	setIsTranslating(false);
 }
 
@@ -691,20 +771,16 @@ export function startTranslateEffects() {
 			}, TRANSLATE_DEBOUNCE_MS);
 		}
 
-		const didTranslateInputsChange =
-			!prevState ||
-			state.providers !== prevState.providers ||
-			state.defaultProviderId !== prevState.defaultProviderId ||
-			state.systemPrompt !== prevState.systemPrompt ||
-			state.debouncedLeftText !== prevState.debouncedLeftText ||
-			state.leftLang !== prevState.leftLang ||
-			state.rightLang !== prevState.rightLang;
+		const didTranslateInputsChange = hasTranslateInputsChanged(
+			state,
+			prevState,
+		);
 
 		if (!didTranslateInputsChange) return;
 
 		const activeProvider = getActiveProvider(state);
 		if (!activeProvider) {
-			abortOngoingTranslation();
+			translateRequestManager.abort(true);
 			setIsTranslating(false);
 			setTranslateError("");
 			return;
@@ -712,14 +788,14 @@ export function startTranslateEffects() {
 
 		const key = activeProvider.apiKey?.trim() ?? "";
 		if (requiresApiKey(activeProvider.type) && !key) {
-			abortOngoingTranslation();
+			translateRequestManager.abort(true);
 			setIsTranslating(false);
 			setTranslateError("");
 			return;
 		}
 
 		if (!state.debouncedLeftText.trim()) {
-			abortOngoingTranslation();
+			translateRequestManager.abort(true);
 			setIsTranslating(false);
 			setTranslateError("");
 			setRightText("");
@@ -727,18 +803,14 @@ export function startTranslateEffects() {
 		}
 
 		if (state.leftLang === state.rightLang) {
-			abortOngoingTranslation();
+			translateRequestManager.abort(true);
 			setIsTranslating(false);
 			setTranslateError("");
 			setRightText(state.debouncedLeftText);
 			return;
 		}
 
-		abortOngoingTranslation();
-		const controller = new AbortController();
-		translateAbortController = controller;
-
-		const reqId = ++translateReqId;
+		const { controller, reqId } = translateRequestManager.start();
 		setIsTranslating(true);
 		setTranslateError("");
 
@@ -757,8 +829,7 @@ export function startTranslateEffects() {
 			abortController: controller,
 		})
 			.then((translated) => {
-				if (controller.signal.aborted) return;
-				if (translateReqId !== reqId) return;
+				if (translateRequestManager.isStale(reqId, controller)) return;
 				setRightText(translated);
 				try {
 					addTranslateHistory({
@@ -772,8 +843,7 @@ export function startTranslateEffects() {
 				}
 			})
 			.catch((err) => {
-				if (controller.signal.aborted) return;
-				if (translateReqId !== reqId) return;
+				if (translateRequestManager.isStale(reqId, controller)) return;
 				const msg =
 					err instanceof Error && err.message
 						? err.message
@@ -781,8 +851,8 @@ export function startTranslateEffects() {
 				setTranslateError(msg);
 			})
 			.finally(() => {
-				if (controller.signal.aborted) return;
-				if (translateReqId !== reqId) return;
+				if (translateRequestManager.isStale(reqId, controller)) return;
+				translateRequestManager.abortController = null;
 				setIsTranslating(false);
 			});
 	});
@@ -790,4 +860,6 @@ export function startTranslateEffects() {
 
 export const __test__ = {
 	translateViaProvider,
+	TranslateRequestManager,
+	hasTranslateInputsChanged,
 } as const;

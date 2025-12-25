@@ -10,7 +10,7 @@ export const I18N_KEY_PREFIX = "i18n:" as const;
 export type AppLanguage = "en" | "zh";
 
 const SUPPORTED_LANGUAGES: readonly AppLanguage[] = ["en", "zh"] as const;
-const DEFAULT_LANGUAGE: AppLanguage = "zh";
+const DEFAULT_LANGUAGE: AppLanguage = "en";
 
 export const appI18n = i18next.createInstance();
 

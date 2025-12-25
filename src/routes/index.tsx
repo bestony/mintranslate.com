@@ -56,6 +56,7 @@ import {
 } from "@/lib/app-i18n";
 import { copyToClipboard } from "@/lib/clipboard";
 import { detectDocsLanguage } from "@/lib/docs-language";
+import { useLangLabels } from "@/lib/language-labels";
 import { formatProviderLabel } from "@/lib/provider-label";
 import {
 	type Lang,
@@ -82,13 +83,7 @@ function App() {
 
 	const uiLang = normalizeAppLanguage(i18n.resolvedLanguage) ?? "zh";
 	const docsLang = detectDocsLanguage(i18n.resolvedLanguage);
-	const langLabel: Record<Lang, string> = {
-		zh: t("common.languages.zh"),
-		en: t("common.languages.en"),
-		fr: t("common.languages.fr"),
-		ja: t("common.languages.ja"),
-		es: t("common.languages.es"),
-	};
+	const langLabel = useLangLabels();
 
 	const leftLang = useStore(translateStore, (state) => state.leftLang);
 	const rightLang = useStore(translateStore, (state) => state.rightLang);

@@ -18,10 +18,42 @@ import { appI18n, normalizeAppLanguage, toHtmlLang } from "@/lib/app-i18n";
 import appCss from "../styles.css?url";
 
 const GA_ID = "G-GCEXSQSG1G";
+const ADS_CLIENT_ID = "ca-pub-9877802927933140";
+const MARKETING_CONSENT_KEY = "mintranslate:consent:marketing";
 const SEO_TITLE =
 	"MinTranslate - Google Translator Alternative & DeepL Translator Alternative";
 const SEO_DESCRIPTION =
 	"MinTranslate is a minimal AI translator, a Google Translator Alternative & DeepL Translator Alternative.";
+const CONTENT_SECURITY_POLICY = [
+	"default-src 'self'",
+	"base-uri 'self'",
+	"object-src 'none'",
+	"script-src 'self' https://www.googletagmanager.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://tpc.googlesyndication.com https://securepubads.g.doubleclick.net",
+	"style-src 'self' 'unsafe-inline'",
+	"img-src 'self' data: https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google-analytics.com https://stats.g.doubleclick.net",
+	"connect-src 'self' https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://www.google-analytics.com https://region1.google-analytics.com https://stats.g.doubleclick.net https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com http://localhost:11434 http://127.0.0.1:11434",
+	"frame-src https://googleads.g.doubleclick.net https://tpc.googlesyndication.com",
+].join("; ");
+
+type GtagArgs = [string, ...unknown[]];
+
+declare global {
+	interface Window {
+		dataLayer?: GtagArgs[];
+		gtag?: (...args: GtagArgs) => void;
+	}
+}
+
+function hasMarketingConsent() {
+	if (typeof window === "undefined") return false;
+
+	try {
+		const consent = window.localStorage.getItem(MARKETING_CONSENT_KEY);
+		return consent === "granted" || consent === "true";
+	} catch {
+		return false;
+	}
+}
 
 export const Route = createRootRoute({
 	head: () => ({
@@ -60,6 +92,14 @@ export const Route = createRootRoute({
 				name: "twitter:description",
 				content: SEO_DESCRIPTION,
 			},
+			...(import.meta.env.PROD
+				? [
+						{
+							httpEquiv: "Content-Security-Policy",
+							content: CONTENT_SECURITY_POLICY,
+						},
+					]
+				: []),
 		],
 		links: [
 			{
@@ -76,10 +116,27 @@ export const Route = createRootRoute({
 function RootDocument({ children }: { children: React.ReactNode }) {
 	const { lang } = useParams({ strict: false });
 	const routeLang = normalizeAppLanguage(lang);
-	const locale = routeLang ?? "zh";
+	const locale = routeLang ?? "en";
 	const htmlLang = toHtmlLang(locale);
+	const [allowTracking, setAllowTracking] = useState(false);
 
 	useEffect(() => {
+		if (!import.meta.env.PROD) return;
+
+		const updateConsent = () => {
+			setAllowTracking(hasMarketingConsent());
+		};
+
+		updateConsent();
+		window.addEventListener("storage", updateConsent);
+
+		return () => {
+			window.removeEventListener("storage", updateConsent);
+		};
+	}, []);
+
+	useEffect(() => {
+		if (!allowTracking) return;
 		if (document.getElementById("ga-gtag")) return;
 
 		const gtagScript = document.createElement("script");
@@ -88,24 +145,29 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 		gtagScript.id = "ga-gtag";
 		document.head.appendChild(gtagScript);
 
-		const inlineScript = document.createElement("script");
-		inlineScript.id = "ga-gtag-inline";
-		inlineScript.text = `window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-gtag("js", new Date());
-gtag("config", "${GA_ID}");`;
-		document.head.appendChild(inlineScript);
-	}, []);
+		const dataLayer = window.dataLayer ?? [];
+		// Persist the dataLayer on window for gtag to use globally.
+		if (!window.dataLayer) window.dataLayer = dataLayer;
+		const gtag: (...args: GtagArgs) => void = (...args) => {
+			dataLayer.push(args);
+		};
+
+		window.gtag = gtag;
+		gtag("js", new Date());
+		gtag("config", GA_ID);
+	}, [allowTracking]);
 
 	return (
 		<html lang={htmlLang} suppressHydrationWarning>
 			<head>
-				<script
-					async
-					src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9877802927933140"
-					crossOrigin="anonymous"
-				/>
 				<HeadContent />
+				{allowTracking ? (
+					<script
+						async
+						src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${ADS_CLIENT_ID}`}
+						crossOrigin="anonymous"
+					/>
+				) : null}
 			</head>
 			<body className="min-h-screen">
 				<ThemeProvider attribute="class" defaultTheme="system" enableSystem>

@@ -11,7 +11,7 @@ describe("app-i18n (SSR)", () => {
 	});
 
 	it("falls back to default language when window is undefined", () => {
-		expect(detectAppLanguage()).toBe("zh");
+		expect(detectAppLanguage()).toBe("en");
 	});
 
 	it("handles missing navigator when window is present", () => {
@@ -20,7 +20,7 @@ describe("app-i18n (SSR)", () => {
 			navigator: undefined,
 		} as never);
 
-		expect(detectAppLanguage()).toBe("zh");
+		expect(detectAppLanguage()).toBe("en");
 	});
 
 	it("setAppLanguage no-ops when window is undefined", async () => {

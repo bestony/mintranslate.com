@@ -73,7 +73,7 @@ describe("app-i18n", () => {
 				.spyOn(window.navigator, "language", "get")
 				.mockReturnValue("fr-FR");
 
-			expect(detectAppLanguage()).toBe("zh");
+			expect(detectAppLanguage()).toBe("en");
 			spy.mockRestore();
 		});
 	});

@@ -1,5 +1,7 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ComponentType, ReactNode } from "react";
+import { act } from "react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -21,16 +23,20 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 
 describe("home provider menu integration", () => {
 	afterEach(() => {
-		stopTranslateEffects();
-		translateStore.setState((state) => ({
-			...state,
-			providers: [],
-			defaultProviderId: "",
-		}));
+		cleanup();
+		act(() => {
+			stopTranslateEffects();
+			translateStore.setState((state) => ({
+				...state,
+				providers: [],
+				defaultProviderId: "",
+			}));
+		});
 		globalThis.localStorage?.clear?.();
 	});
 
 	it("shows provider label and lists configured providers", async () => {
+		const user = userEvent.setup();
 		const providers = [
 			{
 				id: "p1",
@@ -72,9 +78,7 @@ describe("home provider menu integration", () => {
 		const trigger = await screen.findByRole("button", {
 			name: "Gemini - gemini-2.5-flash",
 		});
-		await act(async () => {
-			fireEvent.pointerDown(trigger);
-		});
+		await user.click(trigger);
 
 		expect(
 			await screen.findByRole("menuitem", {
