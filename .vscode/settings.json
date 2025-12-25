@@ -32,7 +32,5 @@
 	"editor.codeActionsOnSave": {
 		"source.organizeImports.biome": "explicit"
 	},
-	"i18n-ally.localesPaths": [
-		"src/locales"
-	]
+	"i18n-ally.localesPaths": ["src/locales"]
 }

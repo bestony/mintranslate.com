@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "mintranslate",
@@ -19,6 +18,7 @@
         "@tanstack/ai-anthropic": "^0.0.3",
         "@tanstack/ai-gemini": "^0.0.3",
         "@tanstack/ai-ollama": "^0.0.3",
+        "@tanstack/db": "^0.5.16",
         "@tanstack/react-db": "^0.1.56",
         "@tanstack/react-router": "^1.132.0",
         "@tanstack/react-start": "^1.132.0",
@@ -50,6 +50,7 @@
         "@tanstack/router-plugin": "^1.132.0",
         "@testing-library/dom": "^10.4.0",
         "@testing-library/react": "^16.2.0",
+        "@testing-library/user-event": "^14.6.1",
         "@types/mdx": "^2.0.13",
         "@types/node": "^22.10.2",
         "@types/react": "^19.2.0",
@@ -547,7 +548,7 @@
 
     "@tanstack/ai-ollama": ["@tanstack/ai-ollama@0.0.3", "https://mirrors.cloud.tencent.com/npm/@tanstack/ai-ollama/-/ai-ollama-0.0.3.tgz", { "dependencies": { "@tanstack/ai": "0.0.3", "ollama": "^0.6.3", "zod": "^4.1.13" } }, "sha512-s9Lcuru6plf3X9X/pCkWW0grs5g1PjbFwTlMlCyFMXbbmqBFSYAaex85V4XkcCCi2pWjIbgVyklfxI9NsHFy1g=="],
 
-    "@tanstack/db": ["@tanstack/db@0.5.12", "https://mirrors.cloud.tencent.com/npm/@tanstack/db/-/db-0.5.12.tgz", { "dependencies": { "@standard-schema/spec": "^1.0.0", "@tanstack/db-ivm": "0.1.14", "@tanstack/pacer-lite": "^0.1.1" }, "peerDependencies": { "typescript": ">=4.7" } }, "sha512-NpQa+Mo9Y4YZ7qL7ugD7/z+ezcZJ67o1BlR63cr3OOxiBbb4Lx9OphWYsJy3g5eBcNI6DhS2hu9mYdlgAwsJlQ=="],
+    "@tanstack/db": ["@tanstack/db@0.5.16", "https://mirrors.cloud.tencent.com/npm/@tanstack/db/-/db-0.5.16.tgz", { "dependencies": { "@standard-schema/spec": "^1.0.0", "@tanstack/db-ivm": "0.1.14", "@tanstack/pacer-lite": "^0.1.1" }, "peerDependencies": { "typescript": ">=4.7" } }, "sha512-V4oCsGlighwgKGWldw1umaXaVYiDR0sK/1fCWictrx2lqxqmBMUEfmNtWnt0CFJXEbyRA/LF8TyFn1ooXtyZ3w=="],
 
     "@tanstack/db-ivm": ["@tanstack/db-ivm@0.1.14", "https://mirrors.cloud.tencent.com/npm/@tanstack/db-ivm/-/db-ivm-0.1.14.tgz", { "dependencies": { "fractional-indexing": "^3.2.0", "sorted-btree": "^1.8.1" }, "peerDependencies": { "typescript": ">=4.7" } }, "sha512-GluhFsd/Z1E/MZTf60l9dZpKNpmdxtV4izPRnj1RK6TYrhC9LMndN+ywk1VDFBrjtBq/CTShz4CilECLwVlTGg=="],
 
@@ -616,6 +617,8 @@
     "@testing-library/dom": ["@testing-library/dom@10.4.1", "https://mirrors.cloud.tencent.com/npm/@testing-library/dom/-/dom-10.4.1.tgz", { "dependencies": { "@babel/code-frame": "^7.10.4", "@babel/runtime": "^7.12.5", "@types/aria-query": "^5.0.1", "aria-query": "5.3.0", "dom-accessibility-api": "^0.5.9", "lz-string": "^1.5.0", "picocolors": "1.1.1", "pretty-format": "^27.0.2" } }, "sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg=="],
 
     "@testing-library/react": ["@testing-library/react@16.3.1", "https://mirrors.cloud.tencent.com/npm/@testing-library/react/-/react-16.3.1.tgz", { "dependencies": { "@babel/runtime": "^7.12.5" }, "peerDependencies": { "@testing-library/dom": "^10.0.0", "@types/react": "^18.0.0 || ^19.0.0", "@types/react-dom": "^18.0.0 || ^19.0.0", "react": "^18.0.0 || ^19.0.0", "react-dom": "^18.0.0 || ^19.0.0" }, "optionalPeers": ["@types/react", "@types/react-dom"] }, "sha512-gr4KtAWqIOQoucWYD/f6ki+j5chXfcPc74Col/6poTyqTmn7zRmodWahWRCp8tYd+GMqBonw6hstNzqjbs6gjw=="],
+
+    "@testing-library/user-event": ["@testing-library/user-event@14.6.1", "https://mirrors.cloud.tencent.com/npm/@testing-library/user-event/-/user-event-14.6.1.tgz", { "peerDependencies": { "@testing-library/dom": ">=7.21.4" } }, "sha512-vq7fv0rnt+QTXgPxr5Hjc210p6YKq2kmdziLgnsZGgLJ9e6VAShx1pACLuRjd/AS/sr7phAR58OIIpf0LlmQNw=="],
 
     "@tybys/wasm-util": ["@tybys/wasm-util@0.10.1", "https://mirrors.cloud.tencent.com/npm/@tybys/wasm-util/-/wasm-util-0.10.1.tgz", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg=="],
 
@@ -1720,6 +1723,8 @@
     "@tailwindcss/oxide-wasm32-wasi/tslib": ["tslib@2.8.1", "https://mirrors.cloud.tencent.com/npm/tslib/-/tslib-2.8.1.tgz", { "bundled": true }, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
 
     "@tanstack/devtools/@tanstack/devtools-client": ["@tanstack/devtools-client@0.0.3", "https://mirrors.cloud.tencent.com/npm/@tanstack/devtools-client/-/devtools-client-0.0.3.tgz", { "dependencies": { "@tanstack/devtools-event-client": "^0.3.3" } }, "sha512-kl0r6N5iIL3t9gGDRAv55VRM3UIyMKVH83esRGq7xBjYsRLe/BeCIN2HqrlJkObUXQMKhy7i8ejuGOn+bDqDBw=="],
+
+    "@tanstack/react-db/@tanstack/db": ["@tanstack/db@0.5.12", "https://mirrors.cloud.tencent.com/npm/@tanstack/db/-/db-0.5.12.tgz", { "dependencies": { "@standard-schema/spec": "^1.0.0", "@tanstack/db-ivm": "0.1.14", "@tanstack/pacer-lite": "^0.1.1" }, "peerDependencies": { "typescript": ">=4.7" } }, "sha512-NpQa+Mo9Y4YZ7qL7ugD7/z+ezcZJ67o1BlR63cr3OOxiBbb4Lx9OphWYsJy3g5eBcNI6DhS2hu9mYdlgAwsJlQ=="],
 
     "@tanstack/router-generator/zod": ["zod@3.25.76", "https://mirrors.cloud.tencent.com/npm/zod/-/zod-3.25.76.tgz", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 

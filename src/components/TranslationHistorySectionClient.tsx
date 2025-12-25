@@ -1,7 +1,7 @@
+import { count } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
 import { Link } from "@tanstack/react-router";
 import { CopyIcon } from "lucide-react";
-import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -28,25 +28,27 @@ export default function TranslationHistorySectionClient() {
 	const uiLang = normalizeAppLanguage(i18n.resolvedLanguage) ?? "zh";
 	const langLabel = useLangLabels();
 
-	const { data, isLoading } = useLiveQuery(() => translateHistoryCollection);
+	const { data: latestItems, isLoading } = useLiveQuery((q) =>
+		q
+			.from({ history: translateHistoryCollection })
+			.orderBy(({ history }) => history.createdAt, "desc")
+			.limit(3)
+			.select(({ history }) => ({ ...history })),
+	);
 
-	const { items, total, subtitle } = useMemo(() => {
-		const sorted = (data ?? [])
-			.slice()
-			.sort((a, b) => b.createdAt - a.createdAt);
-		const totalCount = sorted.length;
-		const last3 = sorted.slice(0, 3);
-		const caption =
-			totalCount > 3
-				? t("home.history.caption.last3")
-				: t("home.history.caption.total", { count: totalCount });
+	const { data: totalRow } = useLiveQuery((q) =>
+		q
+			.from({ history: translateHistoryCollection })
+			.select(({ history }) => ({ total: count(history.id) }))
+			.findOne(),
+	);
 
-		return {
-			items: last3,
-			total: totalCount,
-			subtitle: caption,
-		};
-	}, [data, t]);
+	const items = latestItems ?? [];
+	const total = totalRow?.total ?? 0;
+	const subtitle =
+		total > 3
+			? t("home.history.caption.last3")
+			: t("home.history.caption.total", { count: total });
 
 	return (
 		<Card className="mt-10 gap-4 py-4">

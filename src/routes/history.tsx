@@ -1,3 +1,4 @@
+import { count } from "@tanstack/db";
 import { useLiveQuery } from "@tanstack/react-db";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
@@ -8,7 +9,7 @@ import {
 	HomeIcon,
 	Trash2Icon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -120,17 +121,29 @@ function TranslateHistoryPageClient() {
 	const uiLang = normalizeAppLanguage(i18n.resolvedLanguage) ?? "zh";
 	const langLabel = useLangLabels();
 
-	const { data, isLoading } = useLiveQuery(() => translateHistoryCollection);
-
 	const [pageSize, setPageSize] = useState<10 | 100>(10);
 	const [page, setPage] = useState(1);
 
-	const sortedItems = useMemo(() => {
-		return (data ?? []).slice().sort((a, b) => b.createdAt - a.createdAt);
-	}, [data]);
+	const { data: pageItems, isLoading } = useLiveQuery(
+		(q) =>
+			q
+				.from({ history: translateHistoryCollection })
+				.orderBy(({ history }) => history.createdAt, "desc")
+				.offset((page - 1) * pageSize)
+				.limit(pageSize)
+				.select(({ history }) => ({ ...history })),
+		[page, pageSize],
+	);
 
-	const total = sortedItems.length;
-	const pageCount = Math.max(1, Math.ceil(total / pageSize));
+	const { data: totalRow } = useLiveQuery((q) =>
+		q
+			.from({ history: translateHistoryCollection })
+			.select(({ history }) => ({ total: count(history.id) }))
+			.findOne(),
+	);
+
+	const total = totalRow?.total ?? 0;
+	const pageCount = Math.max(1, Math.ceil(Math.max(total, 0) / pageSize));
 
 	useEffect(() => {
 		if (page > pageCount) setPage(pageCount);
@@ -138,7 +151,7 @@ function TranslateHistoryPageClient() {
 
 	const startIndex = (page - 1) * pageSize;
 	const endIndex = Math.min(startIndex + pageSize, total);
-	const items = sortedItems.slice(startIndex, endIndex);
+	const items = pageItems ?? [];
 
 	return (
 		<div className="min-h-screen bg-gradient-to-b from-background to-muted/30">
@@ -227,7 +240,12 @@ function TranslateHistoryPageClient() {
 								variant="outline"
 								size="sm"
 								disabled={!total}
-								onClick={() => exportHistoryAsJson(sortedItems, t)}
+								onClick={() => {
+									const allItems = Array.from(
+										translateHistoryCollection.state.values(),
+									).sort((a, b) => b.createdAt - a.createdAt);
+									exportHistoryAsJson(allItems, t);
+								}}
 							>
 								<DownloadIcon />
 								{t("translateHistoryPage.actions.exportJson")}
@@ -261,7 +279,9 @@ function TranslateHistoryPageClient() {
 										<AlertDialogAction
 											className="bg-destructive text-white hover:bg-destructive/90"
 											onClick={() => {
-												const allIds = (data ?? []).map((item) => item.id);
+												const allIds = Array.from(
+													translateHistoryCollection.state.keys(),
+												);
 												if (!allIds.length) return;
 												translateHistoryCollection.delete(allIds);
 												setPage(1);
