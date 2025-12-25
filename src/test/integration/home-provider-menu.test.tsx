@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ComponentType, ReactNode } from "react";
+import { act } from "react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -22,12 +23,15 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 
 describe("home provider menu integration", () => {
 	afterEach(() => {
-		stopTranslateEffects();
-		translateStore.setState((state) => ({
-			...state,
-			providers: [],
-			defaultProviderId: "",
-		}));
+		cleanup();
+		act(() => {
+			stopTranslateEffects();
+			translateStore.setState((state) => ({
+				...state,
+				providers: [],
+				defaultProviderId: "",
+			}));
+		});
 		globalThis.localStorage?.clear?.();
 	});
 
