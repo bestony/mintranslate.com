@@ -657,12 +657,14 @@ let debounceTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
 class TranslateRequestManager {
 	abortController: AbortController | null = null;
 	#reqId = 0;
+	#staleIncremented = false;
 
 	abort(markStale = false) {
 		this.abortController?.abort();
 		this.abortController = null;
 		if (markStale) {
 			this.#reqId += 1;
+			this.#staleIncremented = true;
 		}
 	}
 
@@ -670,7 +672,14 @@ class TranslateRequestManager {
 		this.abort();
 		const controller = new AbortController();
 		this.abortController = controller;
-		const reqId = ++this.#reqId;
+
+		if (!this.#staleIncremented) {
+			this.#reqId += 1;
+		} else {
+			this.#staleIncremented = false;
+		}
+
+		const reqId = this.#reqId;
 		return { controller, reqId } as const;
 	}
 
@@ -822,4 +831,5 @@ export function startTranslateEffects() {
 
 export const __test__ = {
 	translateViaProvider,
+	TranslateRequestManager,
 } as const;

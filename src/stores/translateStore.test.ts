@@ -1288,6 +1288,35 @@ describe("translateStore", () => {
 		);
 	});
 
+	describe("TranslateRequestManager", () => {
+		it("marks request stale when aborted", async () => {
+			const { __test__ } = await importFreshStore();
+			const manager = new __test__.TranslateRequestManager();
+
+			const { controller, reqId } = manager.start();
+			expect(manager.isStale(reqId, controller)).toBe(false);
+
+			manager.abort();
+			expect(controller.signal.aborted).toBe(true);
+			expect(manager.isStale(reqId, controller)).toBe(true);
+		});
+
+		it("increments reqId when abort called with markStale", async () => {
+			const { __test__ } = await importFreshStore();
+			const manager = new __test__.TranslateRequestManager();
+
+			const { controller: firstController, reqId: firstReqId } =
+				manager.start();
+			manager.abort(true);
+
+			const { controller: secondController, reqId: secondReqId } =
+				manager.start();
+			expect(secondReqId).toBe(firstReqId + 1);
+			expect(manager.isStale(firstReqId, firstController)).toBe(true);
+			expect(manager.isStale(secondReqId, secondController)).toBe(false);
+		});
+	});
+
 	it("creates adapters for Anthropic/Gemini and supports Ollama host", async () => {
 		const {
 			startTranslateEffects,
