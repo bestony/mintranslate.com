@@ -4,6 +4,7 @@ import {
 	Link,
 	Scripts,
 	useParams,
+	useRouter,
 } from "@tanstack/react-router";
 import { ThemeProvider } from "next-themes";
 import { useEffect, useState } from "react";
@@ -24,16 +25,6 @@ const SEO_TITLE =
 	"MinTranslate - Google Translator Alternative & DeepL Translator Alternative";
 const SEO_DESCRIPTION =
 	"MinTranslate is a minimal AI translator, a Google Translator Alternative & DeepL Translator Alternative.";
-const CONTENT_SECURITY_POLICY = [
-	"default-src 'self'",
-	"base-uri 'self'",
-	"object-src 'none'",
-	"script-src 'self' https://www.googletagmanager.com https://pagead2.googlesyndication.com https://www.googletagservices.com https://tpc.googlesyndication.com https://securepubads.g.doubleclick.net",
-	"style-src 'self' 'unsafe-inline'",
-	"img-src 'self' data: https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com https://www.google-analytics.com https://stats.g.doubleclick.net",
-	"connect-src 'self' https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://www.google-analytics.com https://region1.google-analytics.com https://stats.g.doubleclick.net https://pagead2.googlesyndication.com https://googleads.g.doubleclick.net https://tpc.googlesyndication.com http://localhost:11434 http://127.0.0.1:11434",
-	"frame-src https://googleads.g.doubleclick.net https://tpc.googlesyndication.com",
-].join("; ");
 
 type GtagArgs = [string, ...unknown[]];
 
@@ -92,14 +83,6 @@ export const Route = createRootRoute({
 				name: "twitter:description",
 				content: SEO_DESCRIPTION,
 			},
-			...(import.meta.env.PROD
-				? [
-						{
-							httpEquiv: "Content-Security-Policy",
-							content: CONTENT_SECURITY_POLICY,
-						},
-					]
-				: []),
 		],
 		links: [
 			{
@@ -114,6 +97,8 @@ export const Route = createRootRoute({
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+	const router = useRouter();
+	const cspNonce = router.options.ssr?.nonce;
 	const { lang } = useParams({ strict: false });
 	const routeLang = normalizeAppLanguage(lang);
 	const locale = routeLang ?? "en";
@@ -170,7 +155,12 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				) : null}
 			</head>
 			<body className="min-h-screen">
-				<ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+				<ThemeProvider
+					attribute="class"
+					defaultTheme="system"
+					enableSystem
+					nonce={cspNonce}
+				>
 					<I18nextProvider i18n={appI18n}>
 						<AppI18nHydrator routeLang={routeLang ?? undefined} />
 						<AppSettingsHydrator />

@@ -556,12 +556,12 @@ function createAdapter(provider: AIProvider): AIAdapter {
 	switch (provider.type) {
 		case "anthropic": {
 			validateProviderApiKey(provider);
-			const key = provider.apiKey!.trim();
+			const key = provider.apiKey?.trim() ?? "";
 			return createAnthropic(key);
 		}
 		case "gemini": {
 			validateProviderApiKey(provider);
-			const key = provider.apiKey!.trim();
+			const key = provider.apiKey?.trim() ?? "";
 			return createGemini(key);
 		}
 		case "ollama": {
@@ -575,7 +575,7 @@ function createAdapter(provider: AIProvider): AIAdapter {
 
 function createOpenAIClient(provider: AIProvider) {
 	validateProviderApiKey(provider);
-	const key = provider.apiKey!.trim();
+	const key = provider.apiKey?.trim() ?? "";
 	const baseURL = provider.baseUrl?.trim() ?? "";
 	const config = baseURL
 		? { apiKey: key, baseURL, dangerouslyAllowBrowser: true }
