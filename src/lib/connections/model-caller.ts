@@ -26,6 +26,20 @@ import { type FailureAttribution, preflightMixedContent } from "./attribution";
 import { type CallRequirement, capabilityBlocker } from "./capability-guard";
 import type { Connection } from "./model";
 
+/**
+ * An image supplied to a call.
+ *
+ * Deliberately the minimum the provider layer needs, and structurally
+ * compatible with the SDK's `ImagePart`, so the public interface does not leak
+ * a dependency type into every caller.
+ */
+export interface ModelImageInput {
+	/** Base64-encoded bytes, without a data-URL prefix. */
+	readonly base64: string;
+	/** MIME type of those bytes, e.g. `image/jpeg`. */
+	readonly mimeType: string;
+}
+
 /** What a caller supplies for one model call. */
 export interface ModelCallRequest {
 	readonly connection: Connection;
@@ -33,7 +47,23 @@ export interface ModelCallRequest {
 	/** What the call needs from the connection. */
 	readonly requirement: CallRequirement;
 	readonly systemInstruction?: string;
+	/**
+	 * The text to send, or the images to send.
+	 *
+	 * Arrays are only meaningful with `requirement: "vision"`. A text call keeps
+	 * passing a string and produces exactly the message it always did.
+	 */
 	readonly userContent: string;
+	/** Images to attach. Present only for multimodal calls. */
+	readonly images?: readonly ModelImageInput[];
+	/**
+	 * Stable key for single-flight deduplication.
+	 *
+	 * Supplied explicitly by callers whose content is large (image bytes), because
+	 * deriving the key from the content would put megabytes into a map key. Callers
+	 * that omit it keep the previous content-derived behaviour.
+	 */
+	readonly dedupeKey?: string;
 	/** Stream partial text as it arrives. */
 	readonly onChunk?: (text: string) => void;
 }
@@ -141,7 +171,11 @@ export function createModelCaller(deps: ModelCallerDeps): ModelCaller {
 
 			// The flight key includes content, so two different texts are two
 			// different requests while genuinely identical ones share a flight.
-			const flightKey = `${connection.id}:${request.requirement}:${request.userContent}`;
+			// The explicit key wins when supplied. Deriving it from content would
+			// hold the image bytes in the key itself.
+			const flightKey = `${connection.id}:${request.requirement}:${
+				request.dedupeKey ?? request.userContent
+			}`;
 
 			// Identical request already in flight: join it instead of superseding
 			// it. Superseding would cancel a call that would have produced exactly
@@ -194,14 +228,48 @@ async function performCall(
 		request.apiKey,
 	);
 
-	const messages: Array<{ role: "system" | "user"; content: string }> = [];
+	/** A multimodal content part, in the shape the provider layer expects. */
+	type Part =
+		| { type: "text"; text: string }
+		| {
+				type: "image";
+				source: { type: "data"; value: string; mimeType: string };
+		  };
+
+	/**
+	 * User-side content.
+	 *
+	 * With no images this stays the plain string it has always been, so the text
+	 * path's message is unchanged. Images switch it to the part array the
+	 * multimodal providers require, text first so the instruction precedes the
+	 * picture it refers to.
+	 */
+	const userContent: string | Part[] =
+		request.images === undefined || request.images.length === 0
+			? request.userContent
+			: [
+					{ type: "text" as const, text: request.userContent },
+					...request.images.map((image) => ({
+						type: "image" as const,
+						source: {
+							type: "data" as const,
+							value: image.base64,
+							mimeType: image.mimeType,
+						},
+					})),
+				];
+
+	const messages: Array<{
+		role: "system" | "user";
+		content: string | Part[];
+	}> = [];
 	if (
 		request.systemInstruction !== undefined &&
 		request.systemInstruction !== ""
 	) {
 		messages.push({ role: "system", content: request.systemInstruction });
 	}
-	messages.push({ role: "user", content: request.userContent });
+	messages.push({ role: "user", content: userContent });
 
 	if (request.onChunk) {
 		const stream = chat({
