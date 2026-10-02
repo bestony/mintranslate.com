@@ -22,8 +22,8 @@ const NAV = [
 ] as const;
 
 /**
- * The header: brand, navigation, and — when the browser can actually install — a
- * compact install control.
+ * The header: brand on the left, right-aligned navigation group, and — when the
+ * browser can actually install — a compact install control.
  *
  * The install control is hidden unless a prompt is available, so it is never a
  * button that does nothing. The full guidance stays in settings.
@@ -41,43 +41,42 @@ export function SiteHeader() {
 					MinTranslate
 				</Link>
 
-				{pwa.canPromptInstall && (
-					<button
-						type="button"
-						// A bare arrow gave no clue what it did. The label is shown where
-						// there is room and the icon carries `title`/`aria-label` where
-						// there is not, so the control always names itself.
-						className="flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-sm border border-border px-4 text-sm"
-						title="安装应用"
-						aria-label="安装应用"
-						onClick={pwa.requestInstall}
-					>
-						<span aria-hidden="true">↓</span>
-						<span className="hidden md:inline">安装应用</span>
-					</button>
-				)}
+				<div className="ml-auto flex min-w-0 items-center gap-4">
+					{pwa.canPromptInstall && (
+						<button
+							type="button"
+							// A bare arrow gave no clue what it did. The label is shown where
+							// there is room and the icon carries `title`/`aria-label` where
+							// there is not, so the control always names itself.
+							className="flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-sm border border-border px-4 text-sm"
+							title="安装应用"
+							aria-label="安装应用"
+							onClick={pwa.requestInstall}
+						>
+							<span aria-hidden="true">↓</span>
+							<span className="hidden md:inline">安装应用</span>
+						</button>
+					)}
 
-				<nav
-					className="min-w-0 flex-1 overflow-x-auto text-sm"
-					aria-label="主导航"
-				>
-					<div className="flex min-w-max items-center gap-4">
-						{NAV.map((item) => (
-							<Link
-								key={item.to}
-								to={item.to}
-								className="nav-link inline-flex min-h-11 shrink-0 items-center"
-								activeProps={{
-									className:
-										"nav-link inline-flex min-h-11 shrink-0 items-center is-active",
-								}}
-								activeOptions={{ exact: item.to === "/" }}
-							>
-								{item.label}
-							</Link>
-						))}
-					</div>
-				</nav>
+					<nav className="min-w-0 overflow-x-auto text-sm" aria-label="主导航">
+						<div className="flex min-w-max items-center justify-end gap-4">
+							{NAV.map((item) => (
+								<Link
+									key={item.to}
+									to={item.to}
+									className="nav-link inline-flex min-h-11 shrink-0 items-center"
+									activeProps={{
+										className:
+											"nav-link inline-flex min-h-11 shrink-0 items-center is-active",
+									}}
+									activeOptions={{ exact: item.to === "/" }}
+								>
+									{item.label}
+								</Link>
+							))}
+						</div>
+					</nav>
+				</div>
 			</div>
 		</header>
 	);
