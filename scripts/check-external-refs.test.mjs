@@ -101,6 +101,16 @@ const mustFail = [
 		files: { 'index.html': '<link href="//cdn.example.com/a.css" rel="stylesheet">' },
 		host: 'cdn.example.com',
 	},
+	{
+		label: 'worker importScripts()',
+		files: { 'sw.js': 'importScripts("https://cdn.example.com/workbox.js")' },
+		host: 'cdn.example.com',
+	},
+	{
+		label: 'worker importScripts() with single quotes',
+		files: { 'sw.js': "importScripts('https://cdn.example.com/workbox.js')" },
+		host: 'cdn.example.com',
+	},
 ]
 
 for (const testCase of mustFail) {
@@ -148,6 +158,24 @@ for (const testCase of mustFail) {
 	})
 	assert.equal(exitCode, 0, 'same-origin and loopback references must pass')
 	checks += 1
+}
+
+// --- mentioning importScripts is not a load ---------------------------------
+{
+	const { exitCode, stdout } = runChecker({
+		// A comment explains that the runtime is bundled and cites the project docs.
+		// The identifier appears and a remote URL appears, but neither is a load.
+		// Matching on the bare word — or on "the identifier followed somewhere by a
+		// URL" — would fail this build for a comment.
+		"sw.js":
+			"// We do not call importScripts; the runtime is bundled locally.\n" +
+			"// See https://workboxjs.org/docs for background.\n" +
+			'self.addEventListener("install", () => {})',
+	})
+	assert.equal(exitCode, 0, "a bare mention of importScripts must not fail the build")
+	// The documentation URL is still reported for human review, just not fatal.
+	assert.ok(stdout.includes("workboxjs.org"), "the doc URL should appear in the report")
+	checks += 2
 }
 
 // --- non-http schemes are not network resource references -------------------

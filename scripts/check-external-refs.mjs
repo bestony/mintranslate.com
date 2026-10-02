@@ -149,6 +149,21 @@ const RESOURCE_REFERENCE_PATTERNS = [
 		name: 'remote Worker',
 		pattern: /\bnew\s+(?:Shared)?Worker\s*\(\s*(?:"([^"]*)"|'([^']*)')/gi,
 	},
+	{
+		// importScripts("https://...") inside a worker.
+		//
+		// This is a separate entry because the load does not pass through the page:
+		// a worker can pull a script from any origin, and nothing on the page side
+		// observes it. Service workers make this reachable in practice — the common
+		// Workbox setup fetches its runtime from a CDN this way — and a build that did
+		// so would break the zero-external-dependency promise in exactly the
+		// environment (an intranet with no internet) that promise exists for.
+		//
+		// Anchored on the call syntax rather than the bare identifier so that a
+		// documentation string mentioning it is not mistaken for a load.
+		name: 'worker importScripts()',
+		pattern: /\bimportScripts\s*\(\s*(?:"([^"]*)"|'([^']*)')/gi,
+	},
 ]
 
 /** Local origins that never resolve to a third party. */
