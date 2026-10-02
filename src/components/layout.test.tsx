@@ -31,10 +31,15 @@ vi.mock("@tanstack/react-router", async () => {
 		Link: ({
 			to,
 			children,
+			activeProps: _activeProps,
+			activeOptions: _activeOptions,
 			...rest
 		}: {
 			to: string;
-			children: React.ReactNode;
+			children?: React.ReactNode;
+			activeProps?: unknown;
+			activeOptions?: unknown;
+			readonly [key: string]: unknown;
 		}) => (
 			<a href={to} {...rest}>
 				{children}
@@ -43,6 +48,7 @@ vi.mock("@tanstack/react-router", async () => {
 	};
 });
 
+import { SiteHeader } from "#/components/SiteChrome";
 import { TranslationWorkspace } from "#/components/translation/TranslationWorkspace";
 
 /** The workspace markup, rendered once per assertion. */
@@ -263,5 +269,21 @@ describe("language rows stay on one line at 390px", () => {
 		const html = workspaceHtml();
 		// `shrink-0` stops a chip from being squeezed into a second line.
 		expect(html).toContain("shrink-0");
+	});
+});
+
+describe("the header navigation group is right-aligned", () => {
+	it("pushes the navigation and install controls to the right margin", () => {
+		const html = renderToString(<SiteHeader />);
+
+		// The group wrapping the install button and nav uses `ml-auto` to push to the far right.
+		expect(html).toMatch(/<div class="[^"]*ml-auto[^"]*"/);
+
+		// The nav does not expand across free width, and inner links align to the end.
+		expect(html).not.toMatch(/<nav[^>]*\bflex-1\b/);
+		expect(html).toContain("justify-end");
+
+		// Nav remains scrollable on narrow screens.
+		expect(html).toContain("overflow-x-auto");
 	});
 });
