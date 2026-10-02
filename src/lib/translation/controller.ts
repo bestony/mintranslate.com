@@ -28,8 +28,8 @@ import type {
 	TranslationMemoryPort,
 } from "../translation-memory";
 import {
-	createTranslationMemoryPreference,
 	getDefaultTranslationMemoryStore,
+	readTranslationMemoryEnabled,
 } from "../translation-memory";
 
 /** Auto-trigger delay, fixed by the PRD and the upstream downstream contract. */
@@ -175,7 +175,6 @@ export function createTranslationController(
 	const { run, callbacks } = deps;
 	const secrets = deps.secrets ?? [];
 	const now = deps.now ?? (() => Date.now());
-	const preference = createTranslationMemoryPreference();
 	const configuredMemory = deps.memory;
 
 	async function readProvider<T>(
@@ -197,9 +196,10 @@ export function createTranslationController(
 			return readProvider(deps.memoryEnabled, true);
 		}
 		// `start` is reached from an effect or a user gesture in the application,
-		// so this is the first point at which reading localStorage is permitted.
-		preference.mount();
-		return preference.isEnabled();
+		// so this is the first point at which reading localStorage is permitted. Read
+		// the persisted value for every request so a settings-page toggle applies to
+		// an already-mounted translation workspace without a page reload.
+		return readTranslationMemoryEnabled();
 	}
 
 	async function memoryPort(): Promise<TranslationMemoryPort | undefined> {
