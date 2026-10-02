@@ -183,6 +183,25 @@ function chipClass(selected: boolean, mobileHidden = false): string {
 		: `${base} border border-border`;
 }
 
+/**
+ * Prominent link to settings when no model connection is configured.
+ *
+ * Rendered in both text and image mode toolbars. Styled as a warning button
+ * within the design palette, using a glyph and label so state is not conveyed
+ * by colour alone.
+ */
+function UnconfiguredConnectionLink() {
+	return (
+		<Link
+			to="/settings"
+			className="inline-flex min-h-11 items-center gap-2 rounded-sm bg-primary-strong px-4 text-primary-foreground text-xs"
+		>
+			<span aria-hidden="true">⚠</span>
+			<span>未配置模型连接 · 去设置</span>
+		</Link>
+	);
+}
+
 export function TranslationWorkspace() {
 	const store = useConnectionStore();
 	const modifier = useModifierLabel();
@@ -841,12 +860,7 @@ export function TranslationWorkspace() {
 								使用中：{active.name}
 							</span>
 						) : (
-							<Link
-								to="/settings"
-								className="nav-link min-h-11 inline-flex items-center text-xs underline"
-							>
-								未配置连接 — 去设置
-							</Link>
+							<UnconfiguredConnectionLink />
 						)}
 					</div>
 
@@ -916,13 +930,7 @@ export function TranslationWorkspace() {
 								使用中：{active.name}
 							</span>
 						) : (
-							<Link
-								to="/settings"
-								// grid-exception: 4px icon-to-text gap
-								className="nav-link min-h-11 inline-flex items-center gap-1 text-xs underline"
-							>
-								未配置连接 — 去设置
-							</Link>
+							<UnconfiguredConnectionLink />
 						)}
 					</div>
 				</div>
