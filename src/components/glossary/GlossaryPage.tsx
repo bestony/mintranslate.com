@@ -16,7 +16,7 @@ import {
 } from "#/lib/glossary";
 import { AUTO_DETECT, LANGUAGE_CODES, languageName } from "#/lib/languages";
 import { logger } from "#/lib/logger";
-import { ROW_HEIGHT, VirtualList } from "../history/VirtualList";
+import { VirtualList } from "../history/VirtualList";
 
 const GLOSSARY_ROW_HEIGHT = 160;
 const LANGUAGE_OPTIONS = [AUTO_DETECT, ...LANGUAGE_CODES] as const;
@@ -88,10 +88,11 @@ export function GlossaryPage() {
 		}
 		setFailure(undefined);
 		setTerms(result.value);
+		const existingIds = new Set(result.value.map((term) => term.id));
 		setSelected((current) => {
 			const next = new Set<string>();
 			for (const id of current) {
-				if (result.value.some((term) => term.id === id)) next.add(id);
+				if (existingIds.has(id)) next.add(id);
 			}
 			return next;
 		});
@@ -521,7 +522,7 @@ export function GlossaryPage() {
 			<VirtualList
 				className="mt-4 h-[60vh] min-h-60 overflow-y-auto rounded-sm border border-border"
 				items={shown}
-				rowHeight={GLOSSARY_ROW_HEIGHT || ROW_HEIGHT}
+				rowHeight={GLOSSARY_ROW_HEIGHT}
 				emptyState={
 					<p className="p-6 text-muted-foreground text-sm">
 						{loading ? "读取中…" : "没有匹配的术语。"}

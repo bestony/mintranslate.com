@@ -16,6 +16,27 @@ describe("glossary page layout", () => {
 		expect(html).toContain('name="glossary-keyword"');
 	});
 
+	it("gives every rendered form control an id or name and a touch target", () => {
+		const html = renderToString(<GlossaryPage />);
+		const controls =
+			html.match(/<(?:button|input|textarea|select)\b[^>]*>/g) ?? [];
+		expect(controls.length).toBeGreaterThan(0);
+		expect(
+			controls.filter(
+				(control) =>
+					(control.startsWith("<input") ||
+						control.startsWith("<textarea") ||
+						control.startsWith("<select")) &&
+					!control.includes("id=") &&
+					!control.includes("name="),
+			),
+		).toEqual([]);
+		for (const control of controls) {
+			if (control.includes('type="file"')) continue;
+			expect(control).toContain("min-h-11");
+		}
+	});
+
 	it("hydrates without browser storage during the first render", async () => {
 		const container = document.createElement("div");
 		container.innerHTML = renderToString(<GlossaryPage />);
