@@ -19,8 +19,33 @@ import {
 	toViteBase,
 } from '../src/lib/base-path.ts'
 import { shouldShowInsecureContextNotice } from '../src/lib/secure-context.ts'
+import { readdirSync } from 'node:fs'
+import { join } from 'node:path'
 
 let checks = 0
+
+/**
+ * List every file below a directory, recursively.
+ *
+ * Returns an empty list when the directory does not exist, so a check that runs
+ * before the first build reports "nothing found" rather than crashing.
+ */
+function listFiles(root) {
+	let entries
+	try {
+		entries = readdirSync(root, { withFileTypes: true })
+	} catch {
+		return []
+	}
+
+	const files = []
+	for (const entry of entries) {
+		const path = join(root, entry.name)
+		if (entry.isDirectory()) files.push(...listFiles(path))
+		else files.push(path)
+	}
+	return files
+}
 
 // --- base path normalization ------------------------------------------------
 const normalizeCases = [
@@ -61,5 +86,23 @@ assert.equal(shouldShowInsecureContextNotice(true), false)
 // Insecure context (plain HTTP on a LAN address): shown.
 assert.equal(shouldShowInsecureContextNotice(false), true)
 checks += 3
+
+
+
+// --- no font files in the build output -------------------------------------
+// The design system uses the system font stack, so a font file in the output
+// means either a dependency crept back in or a `@font-face` was added. Checked
+// here rather than in the worker generator because this is the rule, not the
+// pre-cache list.
+const FONT_EXTENSIONS = ['.woff', '.woff2', '.ttf', '.otf']
+const fontFiles = listFiles(process.argv[2] ?? 'dist').filter((file) =>
+	FONT_EXTENSIONS.some((extension) => file.toLowerCase().endsWith(extension)),
+)
+assert.deepEqual(
+	fontFiles,
+	[],
+	`build output must contain no font files, found: ${fontFiles.join(', ')}`,
+)
+checks += 1
 
 console.log(`[check-helpers] OK - ${checks} assertions passed.`)

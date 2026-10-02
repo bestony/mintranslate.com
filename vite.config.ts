@@ -65,8 +65,10 @@ const webAppManifest: NonNullable<
 	scope: "./",
 	display: "standalone",
 	orientation: "any",
-	theme_color: "#2f6a4a",
-	background_color: "#e7f3ec",
+	// Both follow the design tokens: the action colour for the browser chrome and
+	// the page surface for the splash background.
+	theme_color: "#6e6e80",
+	background_color: "#ffffff",
 	icons: [
 		// `any` and `maskable` are separate entries on purpose: a combined
 		// `any maskable` entry produces a badly cropped icon on platforms that
@@ -138,7 +140,7 @@ export default defineConfig({
 			// The shell must not be pinned: a stale cached shell would keep serving
 			// an old build after a deployment.
 			workbox: {
-				globPatterns: ["**/*.{js,css,html,woff2,png,svg,webmanifest}"],
+				globPatterns: ["**/*.{js,css,html,png,svg,webmanifest}"],
 				// SPA navigations fall back to the shell so client routing can take over.
 				navigateFallback: `${toViteBase(basePath)}_shell.html`,
 				// Only same-origin static assets may be stored. Cross-origin requests —

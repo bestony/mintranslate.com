@@ -41,8 +41,11 @@ import { generateSW, getManifest } from 'workbox-build'
 import { normalizeBasePath } from '../src/lib/base-path.ts'
 
 /** Files worth pre-caching: the shell plus every asset the app can load. */
+// No `woff2` entry on purpose: the application ships no font files, so the
+// pattern states that expectation rather than tolerating their presence. The
+// absence itself is asserted by `scripts/check-helpers.mjs`.
 const GLOB_PATTERNS = [
-	'**/*.{js,css,html,woff2,png,svg,webmanifest}',
+	'**/*.{js,css,html,png,svg,webmanifest}',
 	// The manifest is emitted by the PWA plugin under its own name.
 	'manifest.webmanifest',
 ]

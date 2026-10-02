@@ -23,8 +23,6 @@
     "build:sw": "node scripts/generate-service-worker.mjs"
   },
   "dependencies": {
-    "@fontsource-variable/fraunces": "^5.3.0",
-    "@fontsource-variable/manrope": "^5.3.0",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/ai": "0.63.0",
     "@tanstack/ai-anthropic": "0.19.3",
@@ -54,7 +52,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.5",
-    "@tailwindcss/typography": "^0.5.16",
     "@tanstack/router-cli": "^1.132.0",
     "@types/node": "^22.10.2",
     "@types/react": "^19.2.0",
