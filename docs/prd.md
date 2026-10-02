@@ -1,10 +1,11 @@
 # MinTranslate 产品需求文档（PRD）
 
-> 版本：v2.0
+> 版本：v2.1
 > 状态：待评审
 > 项目：`mintranslate`（TanStack Start SPA + 浏览器直连 LLM）
 >
 > 变更记录：
+> - v2.1：引入 Google Analytics 4 匿名埋点（默认开启 + 可一键关闭），新增第 13 章《埋点与数据分析》；**撤回** v2.0 中「无任何遥测与埋点上传」的表述，改为「除用户配置的 Endpoint 与 GA 外无其他出站请求」；新增 URL 脱敏硬约束，禁止把翻译原文经 `page_view` 上报。
 > - v2.0：架构基线改为**纯前端 + BYOK 浏览器直连**。取消服务端持有密钥，改由用户在设置页填写 Endpoint / Model / API Key；明确各厂商 CORS 实测结论与 Workers 兜底方案。
 > - v1.2：产品定位收敛为单机单用户个人工具，明确不涉及团队场景。
 > - v1.1：明确不做云同步（历史与收藏仅本地）；图片翻译确定使用多模态大模型完成识别与翻译。
@@ -110,6 +111,7 @@ MinTranslate 是一个**面向个人的自托管 AI 翻译工作台**：以文�
 | 模型 | FR-MODEL-03 | 连接测试与错误诊断 | **P0** |
 | 模型 | FR-MODEL-04 | 模型档位（高级 / 快速） | **P1** |
 | 模型 | FR-MODEL-05 | 自定义 System Prompt / 风格 | **P2** |
+| 模型 | FR-MODEL-06 | 密钥本地存储与安全 | **P0** |
 | 语料资产 | FR-TERM-01 | 术语表 | **P1** |
 | 语料资产 | FR-TERM-02 | 翻译记忆与复用 | **P2** |
 | 历史与收藏 | FR-HIST-01 | 历史记录（纯本地，无账号） | **P0** |
@@ -131,6 +133,13 @@ MinTranslate 是一个**面向个人的自托管 AI 翻译工作台**：以文�
 | 交互形态 | FR-UX-03 | 深浅主题 | **P2** |
 | 交互形态 | FR-UX-04 | 键盘快捷键 | **P2** |
 | 开放能力 | FR-API-01 | 翻译 API / MCP 工具 | **P2** |
+| 埋点与分析 | FR-ANALYTICS-01 | GA4 集成与运行时配置 | **P1** |
+| 埋点与分析 | FR-ANALYTICS-02 | 事件主体（打开 / 翻译 / 语言切换 / 供应商配置） | **P1** |
+| 埋点与分析 | FR-ANALYTICS-03 | CORS 失败事件与厂商归因 | **P1** |
+| 埋点与分析 | FR-ANALYTICS-04 | 模型厂商与模型名埋点（不含 Key） | **P1** |
+| 埋点与分析 | FR-ANALYTICS-05 | 隐私开关与数据最小化 | **P0** |
+| 埋点与分析 | FR-ANALYTICS-06 | 事件 Schema 与实现约束 | **P1** |
+| 埋点与分析 | FR-ANALYTICS-07 | URL 脱敏（禁止原文出站） | **P0** |
 
 ---
 
@@ -471,6 +480,7 @@ MinTranslate 是一个**面向个人的自托管 AI 翻译工作台**：以文�
 - 参数约定：`sl`（源语言）、`tl`（目标语言）、`text`（原文）、`op`（模式：`translate` / `images` / `docs` / `websites`）。
 - 状态变化需同步到 URL（`replaceState`，避免污染浏览器历史），直接打开链接可复原状态。
 - `text` 参数需 URL Encode，长度超阈值时不写入 URL，仅保留内存状态。
+- **隐私约束**：因 URL 会经由 GA4 的 `page_view` 上报，所有 page_view 必须剥离 `text` 参数后再发送（见 `FR-ANALYTICS-07`）。
 
 #### FR-UX-02 响应式布局（P0）
 
@@ -515,7 +525,7 @@ MinTranslate 是一个**面向个人的自托管 AI 翻译工作台**：以文�
 | 性能 | 首屏 LCP < 2.5s（静态托管，无 SSR）；输入到首 token < 1.5s（P95，不含模型服务自身延迟）；语言列表滚动 ≥ 55 FPS |
 | 可用性 | 模型服务不可用时应用整体不崩溃，降级为可浏览历史；无网络时设置页与历史仍可用 |
 | 安全 | API Key 仅存浏览器本地且只发往用户配置的 Endpoint；用户输入一律转义，防止 XSS；导入配置中的 HTML/Markdown 一律按纯文本处理 |
-| 隐私 | 默认不采集内容；无任何遥测与埋点上传；历史与收藏仅存本地且无云同步；日志脱敏，不打印原文全文、密钥与图片数据 |
+| 隐私 | 默认不采集翻译内容；历史与收藏仅存本地且无云同步；除用户配置的 Endpoint 与 GA4 外无其他出站请求；日志脱敏，不打印原文全文、密钥与图片数据 |
 | 可访问性 | 交互元素具备可访问名称；弹层支持键盘操作与焦点陷阱；对比度符合 WCAG AA |
 | 国际化 | UI 文案中英双语；语言名与代码的映射表集中维护 |
 | 兼容性 | 最新版 Chrome / Safari / Edge / Firefox；移动端 Safari 与 Chrome。需兼容桌面端浏览器对第三方 Endpoint 的 CORS 策略差异 |
@@ -594,8 +604,8 @@ MinTranslate 是一个**面向个人的自托管 AI 翻译工作台**：以文�
 
 | 阶段 | 范围 | 交付判据 |
 | --- | --- | --- |
-| M1（MVP） | 全部 P0 | 纯静态可部署；BYOK 设置页与连接测试；文本翻译、语言选择、历史记录、复制、错误处理、响应式可用 |
-| M2 | P1 | 术语表、收藏、搜索、图片翻译（多模态）、文档翻译、分享深链、交换语言 |
+| M1（MVP） | 全部 P0 | 纯静态可部署；BYOK 设置页与连接测试；文本翻译、语言选择、历史记录、复制、错误处理、响应式可用；GA4 开关与 URL 脱敏 |
+| M2 | P1 | 术语表、收藏、搜索、图片翻译（多模态）、文档翻译、分享深链、交换语言、GA4 事件埋点 |
 | M3 | P2 | TTS、文档异步、网站翻译（含 Workers 兜底）、主题、快捷键、反馈、客户端 SDK |
 | M4 | P3 | 语音同传、浏览器插件、社区共建（仅登记） |
 
@@ -631,7 +641,10 @@ MinTranslate 是一个**面向个人的自托管 AI 翻译工作台**：以文�
 | AC-13 | 分享链接在新窗口打开 | 完整还原原文、语言与结果 |
 | AC-14 | 移动端 375px 宽度 | 单栏布局，无横向滚动 |
 | AC-15 | 键盘 Tab 遍历弹层 | 焦点被限制在弹层内，`Esc` 可关闭 |
-| AC-16 | 全站检查网络请求 | 除用户配置的 Endpoint 外，不存在任何出站请求（无遥测/无埋点） |
+| AC-16 | 全站检查网络请求 | 出站请求仅限两类：用户配置的模型 Endpoint、GA4 端点（`googletagmanager.com` / `google-analytics.com`）；无业务数据回传 |
+| AC-16b | 在设置页关闭「匿名使用统计」 | GA 停止发送任何事件，且清理已写入的 GA cookie；模型调用不受影响 |
+| AC-16c | 关闭统计后刷新页面 | 开关状态保持，GA 脚本不再注入 |
+| AC-16d | 在 URL 中携带 `text=<原文>` 后切换语言 | 上报的 `page_view` URL 中不含 `text` 参数（原文未被发送到 Google） |
 | AC-17 | 检查构建产物 | 不含任何服务端函数与密钥；`grep` 不到 `process.env` 注入的模型密钥 |
 | AC-18 | 关闭所有后端（仅静态托管） | 除网站翻译外全部 P0/P1 功能可用 |
 
@@ -651,6 +664,8 @@ MinTranslate 是一个**面向个人的自托管 AI 翻译工作台**：以文�
 | 网站抓取易被反爬 | 功能不稳定 | 明确降级策略与失败提示，不承诺成功率；纯前端下站点覆盖率天然受限 |
 | TTS 依赖浏览器能力 | 跨端不一致 | 按钮按能力启用/禁用，并说明原因 |
 | 本地存储被浏览器清理 | 历史与配置丢失 | 提供导入/导出 JSON；在清空与导出入口明示本地存储风险 |
+| **GA 采集与隐私承诺存在张力** | 用户信任受损 | 默认开启但提供一键关闭；全链路禁止上报原文/译文/密钥；URL 严格脱敏；在设置页与隐私说明中如实披露 |
+| GA 被广告拦截插件屏蔽（AdBlock / uBlock） | 数据样本偏差 | 统计仅用于相对趋势判断，不用于绝对值结论；关键决策不单独依赖 GA 数据 |
 
 **已决策**：
 
@@ -658,6 +673,8 @@ MinTranslate 是一个**面向个人的自托管 AI 翻译工作台**：以文�
 2. 图片翻译**使用多模态大模型**完成识别与翻译，不引入独立 OCR 引擎。
 3. 产品定位为**单机单用户个人工具**，不涉及团队场景；不做成员管理、共享语料与配额分配，因此也不引入面向团队的用量统计与配额管理。
 4. 架构为**纯前端 SPA + BYOK 浏览器直连**，无服务端、无密钥托管；Workers 仅作为网站翻译的可选兜底，不是默认依赖。
+5. 引入 **Google Analytics 4 匿名埋点**，默认开启并可在设置页一键关闭；Measurement ID 支持构建时环境变量与用户运行时填写，环境变量优先。
+6. 埋点**只采结构化元数据**（语言代码、厂商标识、模型名、成功/耗时），**绝不采集**原文、译文、图片内容与任何密钥。
 
 **待确认问题**：
 
@@ -668,3 +685,136 @@ MinTranslate 是一个**面向个人的自托管 AI 翻译工作台**：以文�
 ## 12. 与 OpenSpec 的衔接
 
 本文档为需求基线。进入实现前，需在 `openspec/` 下按变更粒度产出中文提案（proposal / design / specs / tasks）。注意：`openspec/` 全部资产不纳入 Git 版本控制，需确保已在 `.gitignore` 中排除。
+
+---
+
+## 13. 埋点与数据分析（Google Analytics 4）
+
+### 13.1 目标与边界
+
+**目标**：以最小必要的数据回答四个产品问题。
+
+| 要回答的问题 | 依据事件 |
+| --- | --- |
+| 用户是否真的在翻译？翻译量级与成功率如何？ | `app_open` / `translate_submit` / `translate_success` / `translate_error` |
+| 语言方向的偏好分布是什么？ | `lang_change` |
+| 用户能顺利配好供应商吗？卡在哪一步？ | `provider_config_save` / `connection_test` |
+| 哪些供应商在浏览器直连下不可用？ | `cors_blocked` |
+| 实际在用哪些厂商 / 模型？ | `model_in_use` |
+
+**边界（不可逾越）**：
+- 埋点用于**产品迭代**，不用于用户画像、广告投放或跨站追踪。
+- 不启用 GA4 的增强型衡量（Enhanced Measurement）中的表单/出站点击自动采集，避免误采输入内容。
+- 不使用 User-ID、不使用 Google Signals、不做跨设备追踪。
+
+### 13.2 启用方式与运行时配置
+
+#### FR-ANALYTICS-01 GA4 集成与运行时配置（P1）
+
+**约束**：
+- 使用 **GA4**（`gtag.js`），Measurement ID 格式 `G-XXXXXXXXXX`。
+- Measurement ID 来源优先级：
+  1. 构建时环境变量 `VITE_GA_MEASUREMENT_ID`（**优先**）；
+  2. 设置页用户填写的自有 ID；
+  3. 两者皆无 → **完全不加载 GA 脚本**，埋点调用退化为空操作（no-op）。
+- 环境变量存在时，设置页对应字段需**只读并标注「由部署配置提供」**，避免用户误以为可覆盖。
+- 埋点必须使用**应用内统一封装**（单一 `track()` 入口），禁止在业务代码里散落 `gtag()` 调用。
+- 事件发送失败（被拦截、离线）**不得**影响任何业务逻辑，禁止 await 阻断渲染。
+- 需为 SPA 手动发送 `page_view`：TanStack Router 的路由变化时触发，不能依赖 GA 的默认首屏上报。
+
+### 13.3 事件清单
+
+#### FR-ANALYTICS-02 事件主体（P1）
+
+**通用参数**（所有事件都带）：
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| `app_version` | string | 应用版本号，用于区分迭代 |
+| `ui_lang` | string | 界面语言 |
+| `is_byok_configured` | boolean | 是否已配置过任意连接（不暴露是哪一把 Key） |
+
+**事件定义**：
+
+| 事件名 | 触发时机 | 参数（除通用参数外） |
+| --- | --- | --- |
+| `app_open` | 应用首次就绪，**每次会话仅一次** | `entry_mode`（`text`/`images`/`docs`/`websites`，来自 `op` 参数）、`has_url_text`（boolean，URL 是否携带原文，**不采内容**） |
+| `translate_submit` | 翻译请求发起 | `mode`、`source_lang`、`target_lang`、`input_chars`（**字符数**，非内容）、`input_kind`（`text`/`image`/`document`/`website`） |
+| `translate_success` | 收到完整结果 | `mode`、`source_lang`、`target_lang`、`provider`、`model`、`latency_ms`、`is_streaming` |
+| `translate_error` | 请求失败 | `mode`、`provider`、`model`、`error_type`、`http_status`（无则省略） |
+| `lang_change` | 源/目标语言变更 | `side`（`source`/`target`）、`from_lang`、`to_lang`、`is_auto_detect`（boolean）、`trigger`（`chip`/`search_list`/`swap`/`url`） |
+| `provider_config_save` | 供应商配置保存 | `provider`、`is_custom_endpoint`（boolean）、`has_base_url_override`（boolean） |
+| `connection_test` | 连接测试结束 | `provider`、`success`、`error_type`、`latency_ms` |
+| `cors_blocked` | 归因为 CORS 失败 | `provider`、`endpoint_host`（**仅主机名**，去掉路径与查询串） |
+| `model_in_use` | 每次翻译实际使用模型时 | `provider`、`model` |
+
+#### FR-ANALYTICS-03 CORS 失败事件与厂商归因（P1）
+
+**描述**：专门回答「哪些供应商访问 CORS 失败」，这是本期最高价值的埋点。
+
+**约束**：
+- 触发条件：请求以「CORS/网络层失败」终止（`TypeError: Failed to fetch` 等），且已排除用户主动取消与 `AbortError`。
+- `cors_blocked` 与 `translate_error` / `connection_test` **并行发送**，便于交叉验证：`cors_blocked` 只在 CORS 归因成立时发，其余归因走 `error_type`。
+- `error_type` 枚举（固定值，禁止自由文本）：
+  `cors_or_network` / `dns` / `timeout` / `auth_401` / `forbidden_403` / `not_found_404` / `rate_limit_429` / `server_5xx` / `bad_response` / `aborted` / `unknown`。
+- `provider` 枚举：`openai` / `anthropic` / `gemini` / `deepseek` / `openrouter` / `ollama` / `custom`。
+- 因浏览器无法读取 CORS 失败的具体原因，`cors_blocked` 在**厂商维度**上可靠，在**原因维度**上不确定；分析时不得据此断言具体技术原因。
+- 用户在纯前端下**必然**会遇到的内置限制（如网站翻译抓取第三方站点）不重复计入 `cors_blocked`，避免污染「供应商兼容性」结论；该场景单独用 `error_type=cors_or_network` + `mode=websites` 区分。
+
+#### FR-ANALYTICS-04 模型厂商与模型名埋点（P1）
+
+**约束**：
+- 必须上报 `provider`（厂商标识）与 `model`（模型 ID）。
+- **严禁上报 API Key**，包括其任何片段、哈希、前缀与长度。
+- **严禁上报完整 Endpoint URL**。需上报时只取 `endpoint_host`（主机名），且自定义 Endpoint 的主机名在发送前做**哈希**处理（避免用户私有域名外泄），另用 `is_custom_endpoint` 布尔值承载分析价值。
+- `model` 为自由字符串，可能包含用户自填内容，因此：
+  - 长度截断到 64 字符；
+  - 使用 GA4 事件参数白名单机制，超长或异常字符直接丢弃该参数而非发送；
+  - 不得把模型名与用户输入拼接。
+
+#### FR-ANALYTICS-05 隐私开关与数据最小化（P0）
+
+**约束**：
+- 设置页提供 **「匿名使用统计」开关，默认开启**。
+- 用户关闭后：
+  1. 立即停止发送任何事件；
+  2. 调用 GA4 的 `ga-disable-<MEASUREMENT_ID>` 或移除 `gtag` 脚本；
+  3. 清理已写入的 GA cookie（`_ga` / `_ga_*`）；
+  4. 开关状态持久化，刷新后不重新加载 GA。
+- 应用提供可见的**隐私说明**入口，如实说明：采集哪些事件、采集字段、发送到 Google、如何关闭。
+- 首次访问时不得弹出同意弹窗（已决策为默认开启 + 可关闭），但设置页的开关与说明必须显眼可达。
+- **绝对禁止上报**：
+  - 原文、译文、图片内容、文档内容、被抓取网页内容；
+  - API Key 及任何密钥字段；
+  - 完整 Endpoint URL（仅允许主机名，且自定义主机名需哈希）；
+  - 用户填写的自定义 System Prompt / 术语表内容。
+- `resolveCanonicalUrl` 与 SPA 路由的 `page_view` 必须**剥离敏感查询参数**，至少包含 `text`（见 `FR-ANALYTICS-07`）。
+
+#### FR-ANALYTICS-06 事件 Schema 与实现约束（P1）
+
+**约束**：
+- 事件名与参数必须集中在**单一 TypeScript 类型定义**中，业务代码通过类型化函数调用，编译期即可发现参数缺失或拼写错误。
+- 事件名使用 `snake_case`，参数名使用 `snake_case`；枚举值用固定字符串字面量，禁止运行时拼接。
+- 每个事件在 GA4 后台需登记为**自定义事件**，参数需登记为**自定义维度**才能用于报表；需随代码维护一份「事件 → 参数 → 用途」的映射清单。
+- 埋点调用必须是**同步、非阻塞**的；任何埋点异常必须被捕获并降级为 no-op，禁止冒泡到业务层。
+- 埋点不得改变业务行为的时序；`translate_success` 的 `latency_ms` 以请求发起为起点，不因埋点而偏移。
+
+#### FR-ANALYTICS-07 URL 脱敏（P0）
+
+**描述**：`FR-UX-01` 允许把原文同步进 URL 的 `text` 参数。GA4 的 `page_view` 默认携带完整 URL，**这将导致翻译原文被发送到 Google**。该风险优先级最高，独立为 P0 需求。
+
+**约束**：
+- 所有 `page_view`（含首次与 SPA 路由跳转）在发送前，必须从 URL 中**整参移除** `text`；建议一并剥离其他用户内容型参数。
+- 不得采用「截断 `text`」等折中方案，必须整参移除。
+- 脱敏必须在**统一入口**完成，禁止各路由自行实现。
+- 必须有自动化用例守住该行为（见 AC-16d）。
+
+### 13.4 关键分析看板（建议）
+
+至少能回答以下问题，均基于上述事件的 GA4 探索报表：
+
+1. **漏斗**：`app_open` → `translate_submit` → `translate_success` 的转化与流失。
+2. **供应商兼容性**：按 `provider` 拆分的 `cors_blocked` 占比。
+3. **配置阻塞**：`connection_test` 的 `error_type` 分布，定位用户卡点。
+4. **使用画像**（匿名）：`provider` × `model` 的请求量排序，指导默认预设排序。
+5. **语言偏好**：`lang_change` 的 `from_lang` → `to_lang` 热力分布。
