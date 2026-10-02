@@ -17,18 +17,34 @@ export const Route = createFileRoute("/settings")({ component: SettingsRoute });
  */
 function SettingsRoute() {
 	return (
-		<main className="page-wrap py-10">
-			<header className="mb-8">
-				<Link to="/" className="nav-link text-sm">
-					← 返回
-				</Link>
-				<h1 className="display-title mt-3 font-bold text-3xl">设置</h1>
-				<p className="mt-2 max-w-2xl text-muted-foreground">
-					配置你自己的模型连接。密钥只保存在本浏览器，不会发送到你所配置的
-					Endpoint 以外的任何地址。
-				</p>
-			</header>
-			<SettingsPage />
-		</main>
+		<>
+			{/* Same shell as the workspace so navigation is consistent and the
+			    responsive breakpoints behave identically on both routes. */}
+			<div className="border-line border-b bg-header-bg">
+				<div className="mx-auto flex w-full max-w-6xl items-center gap-4 px-4 py-3 md:px-6">
+					<Link to="/" className="display-title font-bold text-lg">
+						MinTranslate
+					</Link>
+					<nav className="ml-auto flex items-center gap-4 text-sm">
+						<Link to="/" className="nav-link">
+							翻译
+						</Link>
+						<Link to="/settings" className="nav-link">
+							设置
+						</Link>
+					</nav>
+				</div>
+			</div>
+			<main className="page-wrap py-10">
+				<header className="mb-8">
+					<h1 className="display-title mt-3 font-bold text-3xl">设置</h1>
+					<p className="mt-2 max-w-2xl text-muted-foreground">
+						配置你自己的模型连接。密钥只保存在本浏览器，不会发送到你所配置的
+						Endpoint 以外的任何地址。
+					</p>
+				</header>
+				<SettingsPage />
+			</main>
+		</>
 	);
 }

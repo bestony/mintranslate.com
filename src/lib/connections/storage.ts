@@ -32,6 +32,9 @@ export const KEYS_KEY = "mintranslate.credentials.v1";
 /** Storage slot for the active connection id. */
 export const ACTIVE_KEY = "mintranslate.active-connection.v1";
 
+/** Storage slot for language usage counts, which order the quick-switch chips. */
+export const LANGUAGE_USAGE_KEY = "mintranslate.language-usage.v1";
+
 /** Storage slot for the selected tier. */
 export const TIER_KEY = "mintranslate.tier.v1";
 

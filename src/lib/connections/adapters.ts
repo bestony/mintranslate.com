@@ -116,7 +116,7 @@ export async function createAdapter(
 		case "openai":
 		case "deepseek":
 		case "openrouter":
-		case "custom":
+		// `custom` falls through to `default`: it is an OpenAI-protocol endpoint.
 		default: {
 			// Every OpenAI-protocol endpoint goes through the compatible adapter, so
 			// a self-hosted gateway and a built-in preset share one code path.
@@ -175,7 +175,7 @@ export function probeModelOptions(
 		case "openai":
 		case "deepseek":
 		case "openrouter":
-		case "custom":
+		// `custom` falls through to `default`: it is an OpenAI-protocol endpoint.
 		default:
 			return { max_output_tokens: maxOutputTokens };
 	}

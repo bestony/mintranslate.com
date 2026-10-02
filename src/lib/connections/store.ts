@@ -26,6 +26,7 @@ import {
 import { presetFor } from "./presets";
 import {
 	type KeyValueStore,
+	LANGUAGE_USAGE_KEY,
 	loadActiveId,
 	loadConnections,
 	loadKeys,
@@ -86,6 +87,10 @@ export interface ConnectionStore extends ConnectionStoreState {
 	setTier(tier: ModelTier): void;
 	/** Connections that passed their test, for tier resolution. */
 	readonly usableConnections: readonly Connection[];
+	/** How often each language code has been used, for the quick-switch chips. */
+	readonly languageUsage: Readonly<Record<string, number>>;
+	/** Record a language use so the quick chips follow the user's habits. */
+	noteLanguageUse(code: string): void;
 }
 
 /**
@@ -101,6 +106,9 @@ export function useConnectionStore(): ConnectionStore {
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const [tier, setTierState] = useState<ModelTier>("advanced");
 	const [loadWarning, setLoadWarning] = useState<string | undefined>(undefined);
+	const [languageUsage, setLanguageUsage] = useState<Record<string, number>>(
+		{},
+	);
 
 	useEffect(() => {
 		const resolved = browserStore();
@@ -134,6 +142,10 @@ export function useConnectionStore(): ConnectionStore {
 	useEffect(() => {
 		if (store) store.setItem(TIER_KEY, tier);
 	}, [store, tier]);
+
+	useEffect(() => {
+		if (store) store.setItem(LANGUAGE_USAGE_KEY, JSON.stringify(languageUsage));
+	}, [store, languageUsage]);
 
 	const keyFor = useCallback((id: string) => keys[id] ?? "", [keys]);
 	const hasKey = useCallback(
@@ -299,5 +311,13 @@ export function useConnectionStore(): ConnectionStore {
 		activate,
 		remove,
 		setTier: setTierState,
+		languageUsage,
+		noteLanguageUse: (code: string) => {
+			if (code === "") return;
+			setLanguageUsage((current) => ({
+				...current,
+				[code]: (current[code] ?? 0) + 1,
+			}));
+		},
 	};
 }

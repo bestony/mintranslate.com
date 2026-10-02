@@ -1,37 +1,38 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 
-import { UnconfiguredNotice } from "#/components/settings/UnconfiguredNotice";
+import { TranslationWorkspace } from "#/components/translation/TranslationWorkspace";
 
 export const Route = createFileRoute("/")({ component: Home });
 
 /**
- * Placeholder home route.
+ * Translation workspace route.
  *
- * The translation workspace itself is built by the `core-translation` change.
- * This route proves two things this change is responsible for: the shell boots
- * with no application backend, and an unconfigured install still renders and
- * points at settings instead of failing.
+ * The workspace is now the application's home. It reads its state from the URL
+ * and drives the translation controller; see the component for how the pieces
+ * compose.
  *
- * It deliberately loads no data, so prerendering the shell cannot fail.
+ * No loader: the shell is prerendered without a backend, so the route must render
+ * from client state alone.
  */
 function Home() {
 	return (
-		<main className="page-wrap py-16">
-			<p className="island-kicker">MinTranslate</p>
-			<h1 className="display-title mt-3 font-bold text-4xl">
-				自托管 AI 翻译工作台
-			</h1>
-			<p className="mt-4 max-w-xl text-lg text-muted-foreground">
-				翻译工作区与本地历史将在后续变更中交付。现在可以先配置你自己的模型连接。
-			</p>
-
-			<UnconfiguredNotice />
-
-			<div className="mt-8">
-				<Link to="/settings" className="nav-link font-medium">
-					前往设置 →
-				</Link>
-			</div>
-		</main>
+		<>
+			<header className="border-line border-b bg-header-bg">
+				<div className="mx-auto flex w-full max-w-6xl items-center gap-4 px-4 py-3 md:px-6">
+					<Link to="/" className="display-title font-bold text-lg">
+						MinTranslate
+					</Link>
+					<nav className="ml-auto flex items-center gap-4 text-sm">
+						<Link to="/" className="nav-link">
+							翻译
+						</Link>
+						<Link to="/settings" className="nav-link">
+							设置
+						</Link>
+					</nav>
+				</div>
+			</header>
+			<TranslationWorkspace />
+		</>
 	);
 }
