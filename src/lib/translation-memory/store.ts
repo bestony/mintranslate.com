@@ -137,6 +137,12 @@ export interface TranslationMemoryPort {
 		targetText: string,
 		context: Partial<MemoryContext>,
 	): Promise<readonly TranslationMemoryRecord[]>;
+	/** Optional similarity lookup used for prompt references after an exact miss. */
+	findSimilar?: (
+		text: string,
+		pair: LanguagePair,
+		options?: SimilarMemoryOptions,
+	) => Promise<readonly SimilarMemoryResult[]>;
 }
 
 interface StoredMemoryRecord extends TranslationMemoryRecord {

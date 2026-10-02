@@ -414,7 +414,10 @@ export function createGlossaryStore(
 			typeof performance === "undefined" ? Date.now() : performance.now();
 		const version = await getVersion(pair);
 		const listed = await list(pair);
-		if (!listed.ok) return [];
+		if (!listed.ok) {
+			logger.warn("glossary.match.unavailable", { reason: listed.reason });
+			return [];
+		}
 		const cacheKey = `${pairKey(pair)}:${version}`;
 		let automaton = automata.get(cacheKey);
 		if (automaton === undefined) {

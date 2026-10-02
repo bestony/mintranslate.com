@@ -79,7 +79,7 @@ describe("auto trigger", () => {
 
 		await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
 		expect(run).toHaveBeenCalledTimes(1);
-		expect(run.mock.calls[0][0].input.text).toBe("hel");
+		expect(run.mock.calls[0]?.[0]?.input.text).toBe("hel");
 	});
 
 	it("does not translate a steady stream of keystrokes", async () => {

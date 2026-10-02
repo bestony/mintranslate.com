@@ -37,6 +37,11 @@ import {
 	type TranslationStyleId,
 } from "#/lib/connections/styles";
 import {
+	type GlossaryMatch,
+	getGlossaryVersion,
+	matchTerms,
+} from "#/lib/glossary";
+import {
 	DEFAULT_RECORD_LIMIT,
 	evictOverLimit,
 	openHistoryDatabase,
@@ -56,7 +61,10 @@ import {
 	swapPair,
 } from "#/lib/languages";
 import { logger } from "#/lib/logger";
-import { createTranslationController } from "#/lib/translation/controller";
+import {
+	createTranslationController,
+	type TranslationResultMetadata,
+} from "#/lib/translation/controller";
 import {
 	acceptInput,
 	COPY_FEEDBACK_MS,
@@ -176,6 +184,11 @@ export function TranslationWorkspace() {
 	const [output, setOutput] = useState("");
 	const [pending, setPending] = useState(false);
 	const [detected, setDetected] = useState<string | undefined>(undefined);
+	const [glossaryMatches, setGlossaryMatches] = useState<
+		readonly GlossaryMatch[]
+	>([]);
+	const [memoryHit, setMemoryHit] = useState(false);
+	const [memoryReferenceCount, setMemoryReferenceCount] = useState(0);
 
 	// `detectedRef` mirrors `detected` so the success callback can read the value
 	// without re-creating the controller on every detection change.
@@ -412,29 +425,48 @@ export function TranslationWorkspace() {
 	const controller = useMemo(
 		() =>
 			createTranslationController({
+				glossaryVersion: getGlossaryVersion,
+				glossaryMatcher: matchTerms,
 				callbacks: {
-					onStart: () => {
+					onStart: (_requestId, input) => {
+						lastInput.current = {
+							text: input.text,
+							sourceLang: input.sourceLang,
+							targetLang: input.targetLang,
+						};
 						setPending(true);
 						setFailure(undefined);
 						setOutput("");
+						setGlossaryMatches([]);
+						setMemoryHit(false);
+						setMemoryReferenceCount(0);
 
-						// Reported from current state: the runner captures the request input
-						// immediately after this callback, so `lastInput` still holds the
-						// previous request at this point.
+						// The snapshot is also needed for exact memory hits, which do not
+						// enter the runner below.
 						reportSubmit({
 							mode: "text",
-							source_lang: sourceLang,
-							target_lang: targetLang,
-							input_chars: text.length,
+							source_lang: input.sourceLang,
+							target_lang: input.targetLang,
+							input_chars: input.text.length,
 							input_kind: "text",
 						});
 					},
 					onChunk: (_id, delta) => setOutput((current) => current + delta),
-					onSuccess: (_id, result) => {
+					onSuccess: (_id, result, _ttftMs, metadata) => {
+						const resolvedMetadata: TranslationResultMetadata = metadata ?? {
+							memoryHit: false,
+							memoryReferences: [],
+							glossaryMatches: [],
+						};
 						setOutput(result);
 						setPending(false);
+						setGlossaryMatches(
+							resolvedMetadata.glossaryMatches as readonly GlossaryMatch[],
+						);
+						setMemoryHit(resolvedMetadata.memoryHit);
+						setMemoryReferenceCount(resolvedMetadata.memoryReferences.length);
 						// Feeds the quick-switch chips with the user's real habits.
-						store.noteLanguageUse(targetLang);
+						store.noteLanguageUse(lastInput.current?.targetLang ?? targetLang);
 
 						// Terminal event: sent unthrottled, because these counts are the
 						// funnel's denominator. Latency is measured from the request start
@@ -527,7 +559,14 @@ export function TranslationWorkspace() {
 						// user asked to keep.
 					},
 				},
-				run: async ({ input, signal, onChunk, requestId }) => {
+				run: async ({
+					input,
+					signal,
+					onChunk,
+					requestId,
+					memoryReferences = [],
+					glossaryMatches = [],
+				}) => {
 					if (!active) throw new Error("no active connection");
 					runStartedAt.current = Date.now();
 					// Capture the input this request was built from, so the success
@@ -543,6 +582,12 @@ export function TranslationWorkspace() {
 						styleId: promptStyle,
 						customInstruction: customInstruction,
 						text: input.text,
+						glossaryMatches,
+						memoryReferences: memoryReferences.map(({ record, score }) => ({
+							source: record.sourceText,
+							target: record.targetText,
+							score,
+						})),
 					});
 
 					const outcome = await caller.call({
@@ -584,7 +629,7 @@ export function TranslationWorkspace() {
 						requestId,
 						signal: signal.aborted,
 					});
-					return { text: outcome.text };
+					return { text: outcome.text, glossaryMatches };
 				},
 			}),
 		[
@@ -597,11 +642,8 @@ export function TranslationWorkspace() {
 			targetLang,
 			persistHistory,
 			sourceLang,
-			analytics.track, // Reported from current state: the runner captures the request input
-			// immediately after this callback, so `lastInput` still holds the
-			// previous request at this point.
+			analytics.track,
 			reportSubmit,
-			text.length,
 		],
 	);
 
@@ -1101,6 +1143,35 @@ export function TranslationWorkspace() {
 						)}
 					</div>
 
+					{output !== "" && (
+						<div
+							className="mt-2 flex flex-wrap items-start gap-2 text-muted-foreground text-xs"
+							aria-live="polite"
+						>
+							<span>术语命中：{glossaryMatches.length} 条</span>
+							{memoryReferenceCount > 0 && (
+								<span>参考译文：{memoryReferenceCount} 条</span>
+							)}
+							{memoryHit && <span>来自翻译记忆</span>}
+							{glossaryMatches.length > 0 && (
+								<details className="basis-full">
+									<summary className="min-h-11 cursor-pointer py-2">
+										查看命中术语
+									</summary>
+									<ul className="space-y-2 border-border border-l-2 pl-4">
+										{glossaryMatches.map((match) => (
+											<li
+												key={`${match.start}-${match.end}-${match.source}-${match.target}`}
+											>
+												{match.source} → {match.target}
+											</li>
+										))}
+									</ul>
+								</details>
+							)}
+						</div>
+					)}
+
 					{/* This panel's toolbar: everything that acts on the translation sits
 					    with it — read aloud first, then the output actions. Grouping them
 					    here is what removed the full-width row that used to separate the
@@ -1115,6 +1186,18 @@ export function TranslationWorkspace() {
 						/>
 						{output !== "" && (
 							<>
+								{memoryHit && (
+									<button
+										type="button"
+										className="nav-link min-h-11 text-xs"
+										onClick={() => {
+											setMemoryHit(false);
+											controller.retry({ bypassMemory: true });
+										}}
+									>
+										重新翻译
+									</button>
+								)}
 								<button
 									type="button"
 									className="nav-link min-h-11 text-xs"

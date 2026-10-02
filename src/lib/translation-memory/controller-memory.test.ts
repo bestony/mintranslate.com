@@ -67,6 +67,50 @@ describe("translation-memory controller integration", () => {
 		);
 	});
 
+	it("matches glossary terms before an exact memory hit", async () => {
+		const memory: TranslationMemoryPort = {
+			findTranslation: vi.fn().mockResolvedValue("cached"),
+			writeTranslation: vi.fn().mockResolvedValue([]),
+		};
+		const onSuccess = vi.fn();
+		const matcher = vi.fn().mockResolvedValue([
+			{
+				source: "API",
+				target: "接口",
+				start: 0,
+				end: 3,
+				index: 0,
+				priority: 1,
+			},
+		]);
+		const controller = createTranslationController({
+			memory,
+			glossaryMatcher: matcher,
+			memoryEnabled: true,
+			run: async () => ({ text: "model" }),
+			callbacks: {
+				onStart: vi.fn(),
+				onChunk: vi.fn(),
+				onSuccess,
+				onFailure: vi.fn(),
+			},
+		});
+		controller.update(input("API"));
+		controller.trigger();
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(matcher).toHaveBeenCalledWith("API", { sl: "en", tl: "zh-Hans" });
+		expect(onSuccess.mock.calls[0]?.[3]).toEqual(
+			expect.objectContaining({
+				memoryHit: true,
+				glossaryMatches: expect.arrayContaining([
+					expect.objectContaining({ source: "API", target: "接口" }),
+				]),
+			}),
+		);
+	});
+
 	it("does not let a superseded hit write an old result", async () => {
 		const first = deferred<string | undefined>();
 		const memory: TranslationMemoryPort = {
@@ -113,6 +157,44 @@ describe("translation-memory controller integration", () => {
 			"final",
 			expect.objectContaining({ sl: "en", tl: "zh-Hans" }),
 		);
+	});
+
+	it("queries similar references after an exact miss", async () => {
+		const memory: TranslationMemoryPort = {
+			findTranslation: vi.fn().mockResolvedValue(undefined),
+			findSimilar: vi.fn().mockResolvedValue([]),
+			writeTranslation: vi.fn().mockResolvedValue([]),
+		};
+		const { controller, runner } = harness(memory);
+		controller.update(input("near match"));
+		controller.trigger();
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(memory.findSimilar).toHaveBeenCalledWith(
+			"near match",
+			{ sl: "en", tl: "zh-Hans" },
+			{ threshold: 0.8, limit: 3 },
+		);
+		expect(runner).toHaveBeenCalledWith(
+			expect.objectContaining({ memoryReferences: [] }),
+		);
+	});
+
+	it("can bypass an exact memory hit for a deliberate retranslation", async () => {
+		const memory: TranslationMemoryPort = {
+			findTranslation: vi.fn().mockResolvedValue("cached"),
+			writeTranslation: vi.fn().mockResolvedValue([]),
+		};
+		const { controller, runner, events } = harness(memory);
+		controller.update(input());
+		controller.retry({ bypassMemory: true });
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(memory.findTranslation).not.toHaveBeenCalled();
+		expect(runner).toHaveBeenCalledTimes(1);
+		expect(events).toContain("success:model");
 	});
 
 	it("does not read or write memory when disabled", async () => {

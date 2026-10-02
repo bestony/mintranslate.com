@@ -79,6 +79,9 @@ export interface AssembledPrompt {
 	readonly glossaryMatches: readonly GlossaryPromptTerm[];
 	/** Matches actually included in the prompt after the injection cap. */
 	readonly injectedGlossaryMatches: readonly GlossaryPromptTerm[];
+	/** Similar translations supplied as optional examples, never mandatory rules. */
+	readonly memoryReferences: readonly TranslationMemoryPromptReference[];
+	readonly injectedMemoryReferences: readonly TranslationMemoryPromptReference[];
 }
 
 /** Structural glossary data accepted by prompt assembly. */
@@ -86,6 +89,13 @@ export type GlossaryPromptTerm = Pick<GlossaryMatch, "source" | "target"> &
 	Partial<
 		Pick<GlossaryMatch, "index" | "position" | "start" | "end" | "priority">
 	>;
+
+/** Structural reference data accepted by prompt assembly. */
+export interface TranslationMemoryPromptReference {
+	readonly source: string;
+	readonly target: string;
+	readonly score?: number;
+}
 
 function promptPosition(term: GlossaryPromptTerm, fallback: number): number {
 	return term.index ?? term.start ?? term.position ?? fallback;
@@ -96,7 +106,30 @@ function glossaryBlock(terms: readonly GlossaryPromptTerm[]): string {
 	return [
 		"Glossary instructions (mandatory):",
 		"Use the specified target term whenever the corresponding source term appears.",
-		...terms.map((term) => `- ${term.source} => ${term.target}`),
+		...terms.map(
+			(term) => `- ${promptValue(term.source)} => ${promptValue(term.target)}`,
+		),
+	].join("\n");
+}
+
+function promptValue(value: string): string {
+	return value
+		.replaceAll("\\", "\\\\")
+		.replaceAll("\r", "\\r")
+		.replaceAll("\n", "\\n");
+}
+
+function referenceBlock(
+	references: readonly TranslationMemoryPromptReference[],
+): string {
+	if (references.length === 0) return "";
+	return [
+		"Translation memory references (for reference only):",
+		"Use these examples as optional guidance; glossary instructions remain mandatory and these references are not rules.",
+		...references.map(
+			(reference) =>
+				`- ${promptValue(reference.source)} => ${promptValue(reference.target)}`,
+		),
 	].join("\n");
 }
 
@@ -116,6 +149,9 @@ export function assemblePrompt(options: {
 	readonly glossaryTerms?: readonly GlossaryPromptTerm[];
 	/** Short alias for integrations that already call the section glossary. */
 	readonly glossary?: readonly GlossaryPromptTerm[];
+	readonly memoryReferences?: readonly TranslationMemoryPromptReference[];
+	/** Alias for integrations that call the section reference translations. */
+	readonly referenceTranslations?: readonly TranslationMemoryPromptReference[];
 }): AssembledPrompt {
 	const style = TRANSLATION_STYLES.find(
 		(entry) => entry.id === options.styleId,
@@ -144,19 +180,24 @@ export function assemblePrompt(options: {
 		.map(({ term }) => term);
 	const injectedMatches = orderedMatches.slice(0, 50);
 	const glossary = glossaryBlock(injectedMatches);
+	const providedReferences =
+		options.memoryReferences ?? options.referenceTranslations ?? [];
+	const injectedReferences = providedReferences.slice(0, 3);
+	const references = referenceBlock(injectedReferences);
 	const custom = options.customInstruction?.trim() ?? "";
 	const userContent =
-		glossary === ""
+		glossary === "" && references === ""
 			? custom === ""
 				? options.text
 				: `${custom}\n\n${options.text}`
-			: [glossary, custom, options.text]
+			: [glossary, references, custom, options.text]
 					.filter((part) => part !== "")
 					.join("\n\n");
 
 	logger.debug("glossary.prompt.injected", {
 		matchedCount: orderedMatches.length,
 		injectedCount: injectedMatches.length,
+		referenceCount: injectedReferences.length,
 	});
 
 	return {
@@ -164,5 +205,7 @@ export function assemblePrompt(options: {
 		userContent,
 		glossaryMatches: orderedMatches,
 		injectedGlossaryMatches: injectedMatches,
+		memoryReferences: providedReferences,
+		injectedMemoryReferences: injectedReferences,
 	};
 }

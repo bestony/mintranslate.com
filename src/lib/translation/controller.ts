@@ -24,6 +24,7 @@ import { logger, newRequestId, sourceText } from "../logger";
 import type {
 	GlossaryVersionProvider,
 	MemoryContext,
+	SimilarMemoryResult,
 	TranslationMemoryPort,
 } from "../translation-memory";
 import {
@@ -66,6 +67,31 @@ export type TriggerOutcome =
 /** What a performed request reports back. */
 export interface TranslationRunResult {
 	readonly text: string;
+	/** Metadata collected while preparing the request. */
+	readonly glossaryMatches?: readonly TranslationGlossaryMatch[];
+}
+
+/** Structural glossary data kept here to avoid coupling the controller to UI code. */
+export interface TranslationGlossaryMatch {
+	readonly source: string;
+	readonly target: string;
+	readonly index?: number;
+	readonly start?: number;
+	readonly end?: number;
+	readonly priority?: number;
+}
+
+/** Optional browser-local matcher used before memory lookup and model work. */
+export type GlossaryMatcher = (
+	text: string,
+	pair: { readonly sl: string; readonly tl: string },
+) => Promise<readonly TranslationGlossaryMatch[]>;
+
+/** Metadata sent to the UI only after a request wins latest-wins arbitration. */
+export interface TranslationResultMetadata {
+	readonly memoryHit: boolean;
+	readonly memoryReferences: readonly SimilarMemoryResult[];
+	readonly glossaryMatches: readonly TranslationGlossaryMatch[];
 }
 
 /** Runs one translation. Injected so the controller stays free of provider code. */
@@ -74,16 +100,20 @@ export type TranslationRunner = (options: {
 	readonly input: TranslationInput;
 	readonly signal: AbortSignal;
 	readonly onChunk: (delta: string) => void;
+	readonly memoryHit?: boolean;
+	readonly memoryReferences?: readonly SimilarMemoryResult[];
+	readonly glossaryMatches?: readonly TranslationGlossaryMatch[];
 }) => Promise<TranslationRunResult>;
 
 /** Callbacks the UI supplies. */
 export interface ControllerCallbacks {
-	readonly onStart: (requestId: string) => void;
+	readonly onStart: (requestId: string, input: TranslationInput) => void;
 	readonly onChunk: (requestId: string, delta: string) => void;
 	readonly onSuccess: (
 		requestId: string,
 		text: string,
 		ttftMs: number | undefined,
+		metadata?: TranslationResultMetadata,
 	) => void;
 	readonly onFailure: (requestId: string, error: unknown) => void;
 	/** Called when a request was discarded because a newer one replaced it. */
@@ -100,6 +130,8 @@ export interface ControllerDeps {
 	readonly memory?: TranslationMemoryPort;
 	/** Injectable glossary version provider; defaults to the contract's "none". */
 	readonly glossaryVersion?: GlossaryVersionProvider;
+	/** Optional matcher; failures degrade to an empty match list. */
+	readonly glossaryMatcher?: GlossaryMatcher;
 	/** Current prompt style, used as part of the memory key. */
 	readonly styleId?: string | (() => string | Promise<string>);
 	/** Current model tier, used as part of the memory key. */
@@ -119,7 +151,7 @@ export interface TranslationController {
 	/** Manual trigger: immediate, guarded against repeat clicks. */
 	trigger(): TriggerOutcome;
 	/** Retry after a failure, using the last input. */
-	retry(): TriggerOutcome;
+	retry(options?: { readonly bypassMemory?: boolean }): TriggerOutcome;
 	/** Cancel any pending or in-flight work, e.g. the text was cleared. */
 	cancel(): void;
 	/** The input currently held by the controller. */
@@ -185,7 +217,8 @@ export function createTranslationController(
 					sl: input.sourceLang,
 					tl: input.targetLang,
 				});
-			} catch {
+			} catch (error) {
+				logger.warn("glossary.version.unavailable", { error });
 				glossaryVersion = "none";
 			}
 		}
@@ -213,7 +246,10 @@ export function createTranslationController(
 	 * Returns the outcome so the caller can tell "refused because nothing to do"
 	 * from "refused because one just ran".
 	 */
-	function start(reason: "auto" | "manual" | "retry"): TriggerOutcome {
+	function start(
+		reason: "auto" | "manual" | "retry",
+		options: { readonly bypassMemory?: boolean } = {},
+	): TriggerOutcome {
 		const input = currentInput;
 		if (!input) return { kind: "suppressed", reason: "empty-input" };
 
@@ -254,7 +290,7 @@ export function createTranslationController(
 			{ requestId, secrets: secretsForLog },
 		);
 
-		callbacks.onStart(requestId);
+		callbacks.onStart(requestId, input);
 
 		// Fire and track through latest-wins so a newer request aborts this one.
 		void latest
@@ -263,11 +299,31 @@ export function createTranslationController(
 				let memory: TranslationMemoryPort | undefined;
 				let memoryKeyContext: MemoryContext | undefined;
 				let memoryHit = false;
+				let memoryReferences: readonly SimilarMemoryResult[] = [];
+				let glossaryMatches: readonly TranslationGlossaryMatch[] = [];
 
-				if (await memoryIsEnabled()) {
+				if (deps.glossaryMatcher !== undefined) {
+					try {
+						glossaryMatches = await deps.glossaryMatcher(input.text, {
+							sl: input.sourceLang,
+							tl: input.targetLang,
+						});
+						if (signal.aborted) throw new Error("superseded");
+						logger.info("glossary.controller.match", {
+							count: glossaryMatches.length,
+						});
+					} catch (error) {
+						if (signal.aborted) throw new Error("superseded");
+						logger.warn("glossary.controller.match-failed", { error });
+						glossaryMatches = [];
+					}
+				}
+
+				if (!options.bypassMemory && (await memoryIsEnabled())) {
 					memory = await memoryPort();
 					if (memory !== undefined) {
 						memoryKeyContext = await memoryContext(input);
+						if (signal.aborted) throw new Error("superseded");
 						try {
 							const hit = await memory.findTranslation(
 								input.text,
@@ -281,12 +337,13 @@ export function createTranslationController(
 									{ requestId, secrets: secretsForLog },
 								);
 								return {
-									result: { text: hit },
+									result: { text: hit, glossaryMatches },
 									firstChunkAt,
 									startedAt,
 									memory,
 									memoryKeyContext,
 									memoryHit,
+									memoryReferences,
 								};
 							}
 						} catch (error) {
@@ -296,6 +353,25 @@ export function createTranslationController(
 								{ error },
 								{ requestId, secrets: secretsForLog },
 							);
+						}
+
+						if (!memoryHit && memory.findSimilar !== undefined) {
+							try {
+								memoryReferences = await memory.findSimilar(
+									input.text,
+									{ sl: input.sourceLang, tl: input.targetLang },
+									{ threshold: 0.8, limit: 3 },
+								);
+								if (signal.aborted) throw new Error("superseded");
+							} catch (error) {
+								if (signal.aborted) throw new Error("superseded");
+								logger.warn(
+									"translation-memory.controller.similar-failed",
+									{ error },
+									{ requestId, secrets: secretsForLog },
+								);
+								memoryReferences = [];
+							}
 						}
 					}
 				}
@@ -313,6 +389,9 @@ export function createTranslationController(
 						if (firstChunkAt === undefined) firstChunkAt = now();
 						callbacks.onChunk(requestId, delta);
 					},
+					memoryHit,
+					memoryReferences,
+					glossaryMatches,
 				});
 
 				return {
@@ -322,6 +401,7 @@ export function createTranslationController(
 					memory,
 					memoryKeyContext,
 					memoryHit,
+					memoryReferences,
 				};
 			})
 			.then((outcome) => {
@@ -343,6 +423,7 @@ export function createTranslationController(
 					memory,
 					memoryKeyContext,
 					memoryHit,
+					memoryReferences,
 				} = outcome.value;
 				const ttftMs =
 					firstChunkAt === undefined ? undefined : firstChunkAt - begin;
@@ -359,7 +440,11 @@ export function createTranslationController(
 					{ requestId, secrets: secretsForLog },
 				);
 
-				callbacks.onSuccess(requestId, result.text, ttftMs);
+				callbacks.onSuccess(requestId, result.text, ttftMs, {
+					memoryHit,
+					memoryReferences,
+					glossaryMatches: result.glossaryMatches ?? [],
+				});
 
 				if (
 					!memoryHit &&
@@ -482,8 +567,8 @@ export function createTranslationController(
 			return lastManualOutcome;
 		},
 
-		retry() {
-			return start("retry");
+		retry(options) {
+			return start("retry", options);
 		},
 
 		cancel() {
