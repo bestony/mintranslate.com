@@ -55,14 +55,14 @@ export function UnconfiguredNotice() {
 	if (configured !== false) return null;
 
 	return (
-		<div className="island-shell mt-8 rounded-md p-5">
+		<div className="island-shell mt-8 rounded-md p-6">
 			<p className="font-medium">还没有可用的模型连接</p>
 			<p className="mt-2 max-w-2xl text-muted-foreground text-sm">
 				翻译需要一个你自己的模型 Endpoint 与 API
 				Key。密钥只保存在本浏览器，不会经过任何中间服务。
 				应用的其他部分不受影响，随时可以回来配置。
 			</p>
-			<Link to="/settings" className="mt-3 inline-block nav-link text-sm">
+			<Link to="/settings" className="mt-4 inline-block nav-link text-sm">
 				去设置连接 →
 			</Link>
 		</div>

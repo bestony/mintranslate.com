@@ -32,7 +32,7 @@ const EVENT_PURPOSES: Record<(typeof ANALYTICS_EVENT_NAMES)[number], string> = {
 
 export function PrivacyNotice({ open, onToggle }: PrivacyNoticeProps) {
 	return (
-		<div className="mt-3">
+		<div className="mt-4">
 			<button
 				type="button"
 				className="nav-link min-h-11 inline-flex items-center text-sm"
@@ -43,30 +43,30 @@ export function PrivacyNotice({ open, onToggle }: PrivacyNoticeProps) {
 			</button>
 
 			{open && (
-				<div className="mt-2 rounded-md border border-border bg-surface p-3 text-muted-foreground text-xs">
+				<div className="mt-2 rounded-md border border-border bg-surface p-4 text-muted-foreground text-xs">
 					<p className="font-medium text-foreground">采集什么</p>
-					<p className="mt-1">仅匿名使用统计，包含以下事件：</p>
-					<ul className="mt-1 list-disc space-y-0.5 pl-5">
+					<p className="mt-2">仅匿名使用统计，包含以下事件：</p>
+					<ul className="mt-2 list-disc space-y-2 pl-6">
 						{ANALYTICS_EVENT_NAMES.map((name) => (
 							<li key={name}>{EVENT_PURPOSES[name]}</li>
 						))}
 					</ul>
 
-					<p className="mt-3 font-medium text-foreground">不采集什么</p>
-					<p className="mt-1">
+					<p className="mt-4 font-medium text-foreground">不采集什么</p>
+					<p className="mt-2">
 						原文、译文、图片与文档内容、被抓取网页内容、API Key 与任何密钥、完整
 						Endpoint
 						地址、自定义提示词与术语表内容，以及历史与反馈记录。页面地址在上报前会移除其中的原文参数。
 					</p>
 
-					<p className="mt-3 font-medium text-foreground">发送到哪里</p>
-					<p className="mt-1">
+					<p className="mt-4 font-medium text-foreground">发送到哪里</p>
+					<p className="mt-2">
 						数据发送到 Google Analytics 4。未配置测量 ID
 						时（例如内网部署）不会加载任何统计脚本，也不会产生任何请求。
 					</p>
 
-					<p className="mt-3 font-medium text-foreground">如何关闭</p>
-					<p className="mt-1">
+					<p className="mt-4 font-medium text-foreground">如何关闭</p>
+					<p className="mt-2">
 						关闭上方的「匿名使用统计」开关即可。关闭后立即停止发送，并清理已写入的统计
 						cookie；刷新后也不会重新加载。
 					</p>

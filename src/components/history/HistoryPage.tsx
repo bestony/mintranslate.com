@@ -270,7 +270,7 @@ export function HistoryPage() {
 		return (
 			<main className="page-wrap py-10">
 				<h1 className="display-title font-bold text-3xl">历史记录</h1>
-				<p className="mt-4 rounded-md border border-border bg-surface p-3 text-sm">
+				<p className="mt-4 rounded-md border border-border bg-surface p-4 text-sm">
 					当前环境无法使用本地历史：{opened.reason}。翻译功能不受影响。
 				</p>
 			</main>
@@ -279,7 +279,7 @@ export function HistoryPage() {
 
 	return (
 		<main className="page-wrap py-6 md:py-10">
-			<div className="flex flex-wrap items-center gap-3">
+			<div className="flex flex-wrap items-center gap-4">
 				<h1 className="display-title font-bold text-2xl md:text-3xl">
 					历史记录
 				</h1>
@@ -289,19 +289,19 @@ export function HistoryPage() {
 			</div>
 
 			{overLimit && (
-				<p className="mt-3 rounded-md border border-border bg-surface p-3 text-sm">
+				<p className="mt-4 rounded-md border border-border bg-surface p-4 text-sm">
 					本地记录已超过 {DEFAULT_RECORD_LIMIT} 条上限（收藏项不会被自动清理）。
 					建议导出备份后清理部分记录。
 				</p>
 			)}
 
 			{/* Filters */}
-			<div className="mt-4 flex flex-wrap items-center gap-3">
+			<div className="mt-4 flex flex-wrap items-center gap-4">
 				<input
 					id="history-search"
 					name="history-search"
 					aria-label="搜索历史记录"
-					className="min-h-11 w-full max-w-sm rounded-md border border-input bg-background px-3 text-sm"
+					className="min-h-11 w-full max-w-sm rounded-md border border-input bg-background px-4 text-sm"
 					placeholder="搜索原文或译文"
 					value={search.input}
 					onChange={(event) => search.setInput(event.target.value)}
@@ -322,7 +322,7 @@ export function HistoryPage() {
 					id="history-source-language"
 					name="history-source-language"
 					aria-label="按源语言筛选"
-					className="min-h-11 rounded-md border border-input bg-background px-3 text-sm"
+					className="min-h-11 rounded-md border border-input bg-background px-4 text-sm"
 					value={sourceLang}
 					onChange={(event) => setSourceLang(event.target.value)}
 				>
@@ -338,7 +338,7 @@ export function HistoryPage() {
 					id="history-target-language"
 					name="history-target-language"
 					aria-label="按目标语言筛选"
-					className="min-h-11 rounded-md border border-input bg-background px-3 text-sm"
+					className="min-h-11 rounded-md border border-input bg-background px-4 text-sm"
 					value={targetLang}
 					onChange={(event) => setTargetLang(event.target.value)}
 				>
@@ -355,7 +355,7 @@ export function HistoryPage() {
 			<div className="mt-4 flex flex-wrap gap-2 text-sm">
 				<button
 					type="button"
-					className="rounded-md border border-input min-h-11 px-3 disabled:opacity-40"
+					className="rounded-md border border-input min-h-11 px-4 disabled:opacity-40"
 					disabled={selected.size === 0}
 					onClick={() =>
 						setConfirming(confirming === "batch" ? undefined : "batch")
@@ -368,14 +368,14 @@ export function HistoryPage() {
 					<>
 						<button
 							type="button"
-							className="rounded-md bg-primary-strong min-h-11 px-3 text-primary-foreground"
+							className="rounded-md bg-primary-strong min-h-11 px-4 text-primary-foreground"
 							onClick={confirmBatchDelete}
 						>
 							确认删除
 						</button>
 						<button
 							type="button"
-							className="rounded-md border border-input min-h-11 px-3"
+							className="rounded-md border border-input min-h-11 px-4"
 							onClick={() => setConfirming(undefined)}
 						>
 							取消
@@ -385,21 +385,21 @@ export function HistoryPage() {
 
 				<button
 					type="button"
-					className="rounded-md border border-input min-h-11 px-3"
+					className="rounded-md border border-input min-h-11 px-4"
 					onClick={() => runExport("json", "all")}
 				>
 					导出全部 JSON
 				</button>
 				<button
 					type="button"
-					className="rounded-md border border-input min-h-11 px-3"
+					className="rounded-md border border-input min-h-11 px-4"
 					onClick={() => runExport("csv", "all")}
 				>
 					导出全部 CSV
 				</button>
 				<button
 					type="button"
-					className="rounded-md border border-input min-h-11 px-3 disabled:opacity-40"
+					className="rounded-md border border-input min-h-11 px-4 disabled:opacity-40"
 					disabled={selected.size === 0}
 					onClick={() => runExport("json", "selected")}
 				>
@@ -407,7 +407,7 @@ export function HistoryPage() {
 				</button>
 				<button
 					type="button"
-					className="rounded-md border border-input min-h-11 px-3"
+					className="rounded-md border border-input min-h-11 px-4"
 					onClick={() => fileRef.current?.click()}
 				>
 					导入
@@ -443,7 +443,7 @@ export function HistoryPage() {
 				{confirming === "clear" && (
 					<button
 						type="button"
-						className="rounded-md border border-input min-h-11 px-3"
+						className="rounded-md border border-input min-h-11 px-4"
 						onClick={() => setConfirming(undefined)}
 					>
 						取消
@@ -452,13 +452,13 @@ export function HistoryPage() {
 			</div>
 
 			{failure !== undefined && (
-				<p className="mt-3 rounded-md border border-border bg-surface p-3 text-sm">
+				<p className="mt-4 rounded-md border border-border bg-surface p-4 text-sm">
 					{failure}
 				</p>
 			)}
 
 			{importReport !== undefined && (
-				<p className="mt-3 rounded-md border border-border bg-surface p-3 text-sm">
+				<p className="mt-4 rounded-md border border-border bg-surface p-4 text-sm">
 					导入完成：新增/更新 {importReport.imported} 条，跳过{" "}
 					{importReport.skipped} 条。
 					{importReport.reasons.length > 0 && (
@@ -471,11 +471,11 @@ export function HistoryPage() {
 			)}
 
 			{notice !== undefined && (
-				<p className="mt-3 text-muted-foreground text-sm">{notice}</p>
+				<p className="mt-4 text-muted-foreground text-sm">{notice}</p>
 			)}
 
 			{search.pending && (
-				<p className="mt-3 text-muted-foreground text-sm">搜索中…</p>
+				<p className="mt-4 text-muted-foreground text-sm">搜索中…</p>
 			)}
 
 			{/* List */}
@@ -496,12 +496,12 @@ export function HistoryPage() {
 					</p>
 				}
 				renderItem={(record) => (
-					<div className="flex h-full items-start gap-3 border-border border-b min-h-11 px-3">
+					<div className="flex h-full items-start gap-4 border-border border-b min-h-11 px-4">
 						<input
 							type="checkbox"
 							id={`history-select-${record.id}`}
 							name="history-select"
-							className="mt-1"
+							className="mt-2"
 							aria-label="选择此记录"
 							checked={selected.has(record.id)}
 							onChange={(event) => {
@@ -520,7 +520,7 @@ export function HistoryPage() {
 							<p className="truncate text-muted-foreground text-sm">
 								{record.targetText}
 							</p>
-							<p className="mt-1 text-muted-foreground text-xs">
+							<p className="mt-2 text-muted-foreground text-xs">
 								{languageName(record.sourceLang)} →{" "}
 								{languageName(record.targetLang)}
 								{record.model !== "" && ` · ${record.model}`}

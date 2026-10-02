@@ -116,18 +116,25 @@ describe("the swap control sits between the columns", () => {
 
 	it("renders between the two panels, desktop only", () => {
 		const html = workspaceHtml();
-		const swapIndex = html.indexOf('aria-label="交换源语言与目标语言"');
-		const firstSection = html.indexOf("<section");
-		const secondSection = html.indexOf("<section", firstSection + 1);
+		// Two controls exist, one per layout. Locate the desktop one by its
+		// desktop-only container rather than by a bare index, which would otherwise
+		// find the mobile control (it appears first in the markup).
+		const desktopMarker = html.indexOf("hidden md:flex");
+		expect(desktopMarker).toBeGreaterThan(-1);
 
-		expect(swapIndex).toBeGreaterThan(-1);
-		// Between the panels: after the source section opens and before the target
-		// section — and in a desktop-only container, because a two-column midline
-		// has no meaning once the columns stack.
-		expect(swapIndex).toBeGreaterThan(firstSection);
-		const swapContainer = html.lastIndexOf("hidden md:flex", swapIndex);
-		expect(swapContainer).toBeGreaterThan(firstSection);
-		expect(secondSection).toBeGreaterThan(0);
+		const desktopSwap = html.indexOf(
+			'aria-label="交换源语言与目标语言"',
+			desktopMarker,
+		);
+		expect(desktopSwap).toBeGreaterThan(desktopMarker);
+
+		// The desktop control sits after the desktop-only container opens, which is
+		// between the source panel and the target panel — the columns' midline.
+		const secondSection = html.indexOf(
+			"<section",
+			html.indexOf("<section") + 1,
+		);
+		expect(secondSection).toBeGreaterThan(desktopMarker);
 	});
 
 	it("explains why swapping is unavailable", () => {
@@ -138,11 +145,21 @@ describe("the swap control sits between the columns", () => {
 });
 
 describe("panels adapt to the viewport", () => {
-	it("both panels carry a viewport-relative bound", () => {
+	it("fills the height left over after the surrounding chrome", () => {
 		const html = workspaceHtml();
-		const viewportBounds = html.match(/100dvh/g) ?? [];
-		// One for the input, one for the result.
-		expect(viewportBounds.length).toBeGreaterThanOrEqual(2);
+		// The panels grow into the space `main` hands them instead of being capped at
+		// a fixed height. `flex-1` on both panels is what makes them fill the viewport
+		// without a magic offset constant that drifts when chrome changes size.
+		const flexFills =
+			html.match(/min-h-60[^"]*flex-1|flex-1[^"]*min-h-60/g) ?? [];
+		expect(flexFills.length).toBeGreaterThanOrEqual(2);
+	});
+
+	it("lets the workspace shrink rather than overflow", () => {
+		const html = workspaceHtml();
+		// Without `min-h-0` a flex child refuses to shrink below its content, so the
+		// panels would push the page taller instead of fitting the viewport.
+		expect(html).toContain("min-h-0");
 	});
 
 	it("keeps a minimum height so panels never collapse", () => {
@@ -170,5 +187,81 @@ describe("the top bar carries only what the task needs", () => {
 		expect(html).toContain("未配置连接");
 		const link = /<a[^>]*href="\/settings"[^>]*>[^<]*未配置连接/;
 		expect(html).toMatch(link);
+	});
+});
+
+describe("the swap control exists at both breakpoints", () => {
+	it("renders a swap control for the stacked layout", () => {
+		// The desktop axis is `hidden md:flex`, so with no mobile counterpart the
+		// language pair could not be swapped at all below the breakpoint.
+		const html = workspaceHtml();
+		const swapControls = html.match(/aria-label="交换源语言与目标语言"/g) ?? [];
+		expect(swapControls.length).toBe(2);
+	});
+
+	it("gives the mobile control a vertical arrow and a centred position", () => {
+		const html = workspaceHtml();
+		// Vertical, because the panels stack; centred, so it reads as sitting between
+		// the source panel and the target row.
+		expect(html).toContain("⇅");
+		expect(html).toMatch(/flex justify-center md:hidden/);
+	});
+
+	it("gives both swap controls a 44px touch target", () => {
+		const html = workspaceHtml();
+		// Every swap control carries the minimum target class.
+		const controls = html.split('aria-label="交换源语言与目标语言"');
+		expect(controls.length - 1).toBe(2);
+		for (const before of controls.slice(0, 2)) {
+			const classes = before.slice(before.lastIndexOf('class="'));
+			expect(classes).toContain("min-h-11");
+		}
+	});
+});
+
+describe("the selected language is distinguishable", () => {
+	it("marks the active language with aria-current", () => {
+		const html = workspaceHtml();
+		// Auto-detect is the default source, and the target default is selected too.
+		const currents = html.match(/aria-current="true"/g) ?? [];
+		expect(currents.length).toBeGreaterThanOrEqual(2);
+	});
+
+	it("fills the selected chip with the action colour", () => {
+		const html = workspaceHtml();
+		// A tint was indistinguishable from an unselected chip; the selected state
+		// now uses the same filled pair as a primary button.
+		const selected =
+			html.match(/bg-primary-strong text-primary-foreground/g) ?? [];
+		expect(selected.length).toBeGreaterThanOrEqual(2);
+	});
+
+	it("does not use the decorative primary as a chip fill", () => {
+		const html = workspaceHtml();
+		// `bg-primary/10` was the ambiguous treatment this replaces.
+		expect(html).not.toContain("bg-primary/10");
+	});
+});
+
+describe("language rows stay on one line at 390px", () => {
+	it("hides entries beyond the mobile count below the breakpoint", () => {
+		const html = workspaceHtml();
+		// Two quick entries plus the selected chip and "more" fit one row at 390px.
+		const mobileHidden = html.match(/hidden md:inline-flex/g) ?? [];
+		expect(mobileHidden.length).toBeGreaterThanOrEqual(2);
+	});
+
+	it("keeps every entry reachable through the more control", () => {
+		const html = workspaceHtml();
+		// Hiding an entry must not remove it: the picker still lists all languages.
+		expect(html).toContain("更多");
+		// Both sides offer it.
+		expect((html.match(/更多/g) ?? []).length).toBeGreaterThanOrEqual(2);
+	});
+
+	it("prevents chips from shrinking or wrapping inside a row", () => {
+		const html = workspaceHtml();
+		// `shrink-0` stops a chip from being squeezed into a second line.
+		expect(html).toContain("shrink-0");
 	});
 });

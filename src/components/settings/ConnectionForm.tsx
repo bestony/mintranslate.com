@@ -85,12 +85,12 @@ export function ConnectionForm({
 	>(undefined);
 
 	const preset = presetFor(connection.provider);
-	const labelClass = "mt-1 block font-medium text-sm";
+	const labelClass = "mt-2 block font-medium text-sm";
 	// `min-h-11` gives every text field a 44px touch target. Focus styling is left
 	// to the global `:focus-visible` ring: overriding it with a border colour
 	// change made focus depend on colour alone.
 	const inputClass =
-		"mt-1 min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm";
+		"mt-2 min-h-11 w-full rounded-md border border-input bg-background px-4 text-sm";
 
 	/** Message for a refusal, so the user learns why nothing happened. */
 	function refusalMessage(refusal: TestRefusal): string {
@@ -155,8 +155,8 @@ export function ConnectionForm({
 	}
 
 	return (
-		<div className="island-shell rounded-md p-5">
-			<div className="flex flex-wrap items-center gap-3">
+		<div className="island-shell rounded-md p-6">
+			<div className="flex flex-wrap items-center gap-4">
 				<h3 className="font-semibold text-lg">{connection.name}</h3>
 				<DirectConnectBadge provider={connection.provider} />
 				<span className="text-muted-foreground text-xs">
@@ -246,21 +246,21 @@ export function ConnectionForm({
 						/>
 						<button
 							type="button"
-							className="mt-1 shrink-0 rounded-md border border-input min-h-11 px-3 text-sm"
+							className="mt-2 shrink-0 rounded-md border border-input min-h-11 px-4 text-sm"
 							onClick={() => setRevealKey((current) => !current)}
 						>
 							{revealKey ? "隐藏" : "显示"}
 						</button>
 					</div>
 					{!revealKey && apiKey !== "" && (
-						<span className="mt-1 block text-muted-foreground text-xs">
+						<span className="mt-2 block text-muted-foreground text-xs">
 							当前：{maskSecret(apiKey)}
 						</span>
 					)}
 				</label>
 			</div>
 
-			<p className="mt-3 text-muted-foreground text-xs">
+			<p className="mt-4 text-muted-foreground text-xs">
 				密钥只保存在本浏览器。BYOK 直连模式下，密钥会随请求直接发往你填写的
 				Endpoint，请勿在公共或共享设备上保存密钥。
 			</p>
@@ -272,7 +272,7 @@ export function ConnectionForm({
 				</p>
 			)}
 
-			<div className="mt-4 flex flex-wrap items-center gap-3">
+			<div className="mt-4 flex flex-wrap items-center gap-4">
 				<div className="flex gap-4 text-sm">
 					<label className="flex min-h-11 items-center gap-2">
 						<input
@@ -315,7 +315,7 @@ export function ConnectionForm({
 					<select
 						id="connection-capabilities"
 						name="connection-capabilities"
-						className="min-h-11 rounded-md border border-input bg-background px-3 text-sm"
+						className="min-h-11 rounded-md border border-input bg-background px-4 text-sm"
 						value={connection.tier ?? ""}
 						onChange={(event) => {
 							const value = event.target.value;
@@ -344,7 +344,7 @@ export function ConnectionForm({
 				>
 					{testing ? "测试中…" : "测试连接"}
 				</button>
-				<span className="ml-3 text-muted-foreground text-xs">
+				<span className="ml-4 text-muted-foreground text-xs">
 					最长等待 {CONNECTION_TEST_TIMEOUT_MS / 1000}{" "}
 					秒；测试会产生一次极小的真实调用。
 				</span>
@@ -354,8 +354,8 @@ export function ConnectionForm({
 				<div
 					className={
 						result.ok
-							? "mt-4 rounded-md border border-border bg-surface p-3 text-sm"
-							: "mt-4 rounded-md border border-border bg-surface p-3 text-sm"
+							? "mt-4 rounded-md border border-border bg-surface p-4 text-sm"
+							: "mt-4 rounded-md border border-border bg-surface p-4 text-sm"
 					}
 				>
 					{result.ok ? (
@@ -364,7 +364,7 @@ export function ConnectionForm({
 						<>
 							<p className="whitespace-pre-wrap">{result.text}</p>
 							{result.checklist && (
-								<ul className="mt-2 list-disc space-y-1 pl-5">
+								<ul className="mt-2 list-disc space-y-2 pl-6">
 									{result.checklist.map((item) => (
 										<li key={item}>{item}</li>
 									))}

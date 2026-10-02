@@ -99,6 +99,67 @@ function useModifierLabel(): string {
 /** One connection's limiter set, shared across the component's lifetime. */
 const limiters = createKeyedLimiters(2);
 
+/** Chip sizes. */
+const CHIP = "min-h-11 shrink-0 rounded-sm px-4 text-xs";
+
+/**
+ * Quick entries shown below the breakpoint.
+ *
+ * The full set of three plus the "more" entry wraps at 390px, which breaks the
+ * single-row alignment the layout depends on. The third entry stays available
+ * through "more", so nothing becomes unreachable.
+ */
+const MOBILE_CHIP_COUNT = 2;
+
+/**
+ * Swap control for stacked layouts.
+ *
+ * The desktop axis between the columns has no meaning once the panels are stacked,
+ * so the control moves into the flow between the source panel and the target
+ * language row. Arrows rotate to indicate vertical movement rather than a
+ * left-right swap that does not exist in this layout.
+ */
+function MobileSwapButton({
+	canSwap,
+	modifier,
+	onSwap,
+}: {
+	readonly canSwap: boolean;
+	readonly modifier: string;
+	readonly onSwap: () => void;
+}) {
+	return (
+		<div className="flex justify-center md:hidden">
+			<button
+				type="button"
+				className="flex min-h-11 min-w-11 items-center justify-center rounded-sm border border-border px-4 text-xs disabled:opacity-40"
+				disabled={!canSwap}
+				title={
+					canSwap ? `交换语言（${modifier}+Shift+S）` : "检测语言状态下无法交换"
+				}
+				aria-label="交换源语言与目标语言"
+				onClick={onSwap}
+			>
+				⇅
+			</button>
+		</div>
+	);
+}
+
+/**
+ * Language chip classes.
+ *
+ * The selected chip fills with the action colour and uses white text — the same
+ * pair as a primary button, so "this is the active choice" reads the same way
+ * everywhere. A tinted background was not enough: `bg-primary/10` on a white
+ * surface is visually near-identical to an unselected chip's plain white.
+ */
+function chipClass(selected: boolean): string {
+	return selected
+		? `${CHIP} border border-transparent bg-primary-strong text-primary-foreground`
+		: `${CHIP} border border-border`;
+}
+
 export function TranslationWorkspace() {
 	const store = useConnectionStore();
 	const modifier = useModifierLabel();
@@ -653,20 +714,21 @@ export function TranslationWorkspace() {
 		sourceLang,
 	]);
 
+	/** Whether the source side is on auto-detect, which is also a selected state. */
+	const sourceIsAuto = sourceLang === AUTO_DETECT;
+
 	return (
-		<div className="flex min-h-screen flex-col">
-			{/* Layout: single column on mobile, wider two-column grid from md up.
-			    `md:content-start` matters: the container is `flex-1`, so in grid mode it
-			    is taller than its content and the rows would otherwise be stretched to
-			    absorb the leftover height, opening a large empty band between the
-			    toolbar and the language rows. `content-start` packs the rows at their
-			    natural height and leaves the slack at the bottom. */}
-			<div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:grid md:grid-cols-[1fr_auto_1fr] md:content-start md:gap-x-6 md:gap-y-4 md:p-6">
+		<div className="flex min-h-0 flex-1 flex-col">
+			{/* Layout: single column on mobile, a three-column grid (source / swap axis /
+			    target) from md up. The rows are left to stretch on purpose: the panels
+			    size themselves from the viewport, and stretching is what lets them use
+			    the free height instead of leaving it blank at the bottom. */}
+			<div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:grid md:min-h-0 md:grid-cols-[1fr_auto_1fr] md:items-stretch md:gap-x-6 md:gap-y-4 md:p-6">
 				<div className="md:col-span-3">
 					{/* The toolbar carries only what the workspace needs at a glance.
 					    Shortcut hints moved to the footer and a tooltip, and the install
 					    entry moved to the header, so this row stays about the task. */}
-					<div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
+					<div className="flex flex-wrap items-center gap-2 border-b border-border pb-4">
 						<button
 							type="button"
 							className="min-h-11 rounded-sm bg-primary-strong px-4 text-primary-foreground text-xs"
@@ -682,6 +744,7 @@ export function TranslationWorkspace() {
 						) : (
 							<Link
 								to="/settings"
+								// grid-exception: 4px icon-to-text gap
 								className="nav-link min-h-11 inline-flex items-center gap-1 text-xs underline"
 							>
 								未配置连接 — 去设置
@@ -698,7 +761,8 @@ export function TranslationWorkspace() {
 					<div className="flex flex-wrap items-center gap-2">
 						<button
 							type="button"
-							className="min-h-11 rounded-sm border border-border px-3 text-xs"
+							aria-current={sourceIsAuto ? "true" : undefined}
+							className={chipClass(sourceIsAuto)}
 							onClick={() => setPicker("source")}
 						>
 							{languageChipLabel(
@@ -706,16 +770,17 @@ export function TranslationWorkspace() {
 								detected !== undefined && sourceLang === AUTO_DETECT,
 							)}
 						</button>
-						{sourceChips.map((code) => (
+						{/* Mobile shows one fewer quick entry so the row stays on a single
+						    line down to 390px; both entries remain reachable via 更多. */}
+						{sourceChips.map((code, index) => (
 							<button
 								key={code}
 								type="button"
 								aria-pressed={sourceLang === code}
-								className={
-									sourceLang === code
-										? "min-h-11 rounded-sm border border-primary bg-primary/10 px-3 text-xs"
-										: "min-h-11 rounded-sm border border-border px-3 text-xs"
-								}
+								aria-current={sourceLang === code ? "true" : undefined}
+								className={`${chipClass(sourceLang === code)} ${
+									index >= MOBILE_CHIP_COUNT ? "hidden md:inline-flex" : ""
+								}`}
 								onClick={() => {
 									setSourceLang(code);
 									setDetected(undefined);
@@ -726,19 +791,28 @@ export function TranslationWorkspace() {
 						))}
 						<button
 							type="button"
-							className="min-h-11 rounded-sm border border-border px-3 text-xs"
+							className={chipClass(false)}
 							onClick={() => setPicker("source")}
 						>
 							更多 ▾
 						</button>
 					</div>
 
+					{/* Mobile swap: the desktop axis is hidden below the breakpoint, so the
+					    control reappears here, centred between this panel and the target
+					    language row, with the arrows rotated to read as vertical movement. */}
+					<MobileSwapButton
+						canSwap={canSwap(sourceLang)}
+						modifier={modifier}
+						onSwap={swap}
+					/>
+
 					<textarea
 						ref={textareaRef}
 						id="translation-source"
 						name="source-text"
 						aria-label="要翻译的文本"
-						className="mt-3 min-h-60 flex-1 resize-none rounded-md border border-input bg-background p-4 text-body md:max-h-[calc(100dvh-22rem)] md:min-h-60"
+						className="mt-4 min-h-60 w-full flex-1 resize-none rounded-md border border-input bg-background p-4 text-body"
 						placeholder="输入要翻译的文本"
 						value={text}
 						onChange={(event) => {
@@ -827,21 +901,21 @@ export function TranslationWorkspace() {
 					<div className="flex flex-wrap items-center gap-2">
 						<button
 							type="button"
-							className="min-h-11 rounded-sm border border-border px-3 text-xs"
+							aria-current="true"
+							className={chipClass(true)}
 							onClick={() => setPicker("target")}
 						>
 							{languageChipLabel(targetLang, false)}
 						</button>
-						{targetChips.map((code) => (
+						{targetChips.map((code, index) => (
 							<button
 								key={code}
 								type="button"
 								aria-pressed={targetLang === code}
-								className={
-									targetLang === code
-										? "min-h-11 rounded-sm border border-primary bg-primary/10 px-3 text-xs"
-										: "min-h-11 rounded-sm border border-border px-3 text-xs"
-								}
+								aria-current={targetLang === code ? "true" : undefined}
+								className={`${chipClass(targetLang === code)} ${
+									index >= MOBILE_CHIP_COUNT ? "hidden md:inline-flex" : ""
+								}`}
 								onClick={() => {
 									const resolved = resolveTargetConflict(
 										{ source: sourceLang, target: code },
@@ -857,20 +931,20 @@ export function TranslationWorkspace() {
 						))}
 						<button
 							type="button"
-							className="min-h-11 rounded-sm border border-border px-3 text-xs"
+							className={chipClass(false)}
 							onClick={() => setPicker("target")}
 						>
 							更多 ▾
 						</button>
 					</div>
 
-					<div className="mt-3 min-h-60 flex-1 overflow-y-auto rounded-md border border-border bg-surface p-4 md:max-h-[calc(100dvh-22rem)] md:min-h-60">
+					<div className="mt-4 min-h-60 flex-1 overflow-y-auto rounded-md border border-border bg-surface p-4">
 						{pending && output === "" && (
 							<p className="text-muted-foreground text-sm">翻译中…</p>
 						)}
 
 						{failure !== undefined && (
-							<div className="rounded-md border border-border bg-surface p-3 text-sm">
+							<div className="rounded-md border border-border bg-surface p-4 text-sm">
 								<p>{failure}</p>
 								<button
 									type="button"

@@ -33,7 +33,7 @@ export function PwaStatus() {
 			)}
 
 			{showUpdate && (
-				<div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-4 py-2 text-sm">
+				<div className="flex flex-wrap items-center gap-4 border-b border-border bg-surface px-4 py-2 text-sm">
 					<span>有新版本可用。</span>
 					<button
 						type="button"
@@ -53,7 +53,7 @@ export function PwaStatus() {
 			)}
 
 			{pwa.upToDateNotice !== undefined && (
-				<output className="block border-b border-border px-4 py-1 text-muted-foreground text-xs">
+				<output className="block border-b border-border px-4 py-2 text-muted-foreground text-xs">
 					{pwa.upToDateNotice}
 				</output>
 			)}

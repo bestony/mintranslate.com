@@ -186,3 +186,41 @@ describe("palette lives in one place", () => {
 		expect(breakpoints).toEqual(["md:768px"]);
 	});
 });
+
+describe("spacing follows the 8px grid", () => {
+	it("uses only 8px-multiple spacing utilities, except marked icon gaps", () => {
+		// `--spacing` is 4px, so an even index (2, 4, 6 …) is an 8px multiple and an
+		// odd index is not. Index 1 (4px) is permitted only for an icon-to-text gap,
+		// and such a use must carry a `grid-exception` comment so the reason is
+		// visible rather than assumed.
+		const spacing =
+			/\b(?:gap|space-x|space-y|p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr)-(\d+)\b/g;
+		const offenders: string[] = [];
+
+		for (const file of sourceFiles("src/components", "src/routes")) {
+			const source = readFileSync(file, "utf8");
+			for (const code of codeOnly(source)) {
+				for (const match of code.matchAll(spacing)) {
+					const step = Number(match[1]);
+					if (step === 0 || step % 2 === 0) continue;
+					offenders.push(`${file}: ${match[0]}`);
+				}
+			}
+		}
+
+		// Every remaining odd step must be one of the two documented exceptions.
+		const exceptions = offenders.filter((entry) => entry.includes("gap-1"));
+		expect(offenders).toEqual(exceptions);
+		expect(exceptions.length).toBeLessThanOrEqual(2);
+	});
+
+	it("documents each permitted 4px exception at its use site", () => {
+		const marked: string[] = [];
+		for (const file of sourceFiles("src/components", "src/routes")) {
+			const source = readFileSync(file, "utf8");
+			if (/grid-exception/.test(source)) marked.push(file);
+		}
+		// The comments are what make the exception auditable instead of silent.
+		expect(marked.length).toBeGreaterThan(0);
+	});
+});

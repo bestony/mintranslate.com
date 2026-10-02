@@ -21,7 +21,7 @@ function Home() {
 			<SiteHeader />
 			{/* A `main` landmark: the other two routes have one, and its absence on the
 			    home route was the only accessibility audit failure. */}
-			<main className="flex flex-1 flex-col">
+			<main className="flex min-h-0 flex-1 flex-col">
 				<TranslationWorkspace />
 			</main>
 			<SiteFooter />

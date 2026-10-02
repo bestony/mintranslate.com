@@ -152,7 +152,7 @@ export function LanguagePicker({
 					id="language-search"
 					name="language-search"
 					aria-label="搜索语言"
-					className="w-full rounded-md border border-input bg-background min-h-11 px-3 text-sm "
+					className="w-full rounded-md border border-input bg-background min-h-11 px-4 text-sm "
 					placeholder="搜索语言（中文名、英文名或代码）"
 					value={term}
 					onChange={(event) => {
@@ -168,7 +168,7 @@ export function LanguagePicker({
 				) : (
 					<div
 						ref={listRef}
-						className="mt-3 max-h-72 overflow-y-auto"
+						className="mt-4 max-h-72 overflow-y-auto"
 						role="listbox"
 						aria-label="语言列表"
 					>
@@ -183,8 +183,8 @@ export function LanguagePicker({
 										aria-selected={isSelected}
 										className={
 											isHighlighted
-												? "flex w-full items-center justify-between rounded-md bg-surface px-3 py-2 text-left text-sm"
-												: "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm"
+												? "flex w-full items-center justify-between rounded-md bg-surface px-4 py-2 text-left text-sm"
+												: "flex w-full items-center justify-between rounded-md px-4 py-2 text-left text-sm"
 										}
 										onMouseEnter={() => setHighlight(index)}
 										onClick={() => onSelect(option.code)}
@@ -205,7 +205,7 @@ export function LanguagePicker({
 					</div>
 				)}
 
-				<div className="mt-3 flex justify-between text-muted-foreground text-xs">
+				<div className="mt-4 flex justify-between text-muted-foreground text-xs">
 					<span>↑↓ 移动 · Enter 选中 · Esc 关闭</span>
 					<button
 						type="button"

@@ -31,7 +31,7 @@ export function SiteHeader() {
 
 	return (
 		<header className="border-b border-border bg-background">
-			<div className="mx-auto flex w-full max-w-6xl items-center gap-4 px-4 py-3 md:px-6">
+			<div className="mx-auto flex w-full max-w-6xl items-center gap-4 px-4 py-4 md:px-6">
 				<Link
 					to="/"
 					className="display-title flex min-h-11 items-center font-bold text-lg"
@@ -42,13 +42,16 @@ export function SiteHeader() {
 				{pwa.canPromptInstall && (
 					<button
 						type="button"
-						// Icon-sized visually, 44px for the touch target.
-						className="ml-auto flex min-h-11 min-w-11 items-center justify-center rounded-sm border border-border text-sm"
-						title="安装到桌面"
-						aria-label="安装到桌面"
+						// A bare arrow gave no clue what it did. The label is shown where
+						// there is room and the icon carries `title`/`aria-label` where
+						// there is not, so the control always names itself.
+						className="ml-auto flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-sm border border-border px-4 text-sm"
+						title="安装应用"
+						aria-label="安装应用"
 						onClick={pwa.requestInstall}
 					>
-						↓
+						<span aria-hidden="true">↓</span>
+						<span className="hidden md:inline">安装应用</span>
 					</button>
 				)}
 

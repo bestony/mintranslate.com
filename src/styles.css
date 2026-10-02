@@ -116,6 +116,14 @@
 
   body {
     margin: 0;
+    /* A full-height column so a route can size itself against the viewport without
+       arithmetic: the header and footer take their natural height and the main
+       region absorbs the rest. `dvh` with a `vh` fallback, because `100vh` includes
+       the area mobile browser toolbars cover. */
+    display: flex;
+    min-height: 100vh;
+    min-height: 100dvh;
+    flex-direction: column;
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);

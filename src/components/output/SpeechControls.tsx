@@ -245,6 +245,7 @@ export function SpeechRateControl({
 			{open && binding.available && (
 				<div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface min-h-11 px-2">
 					{SPEECH_RATES.map((tier) => (
+						// grid-exception: 4px between a rate button and its preview action
 						<div key={tier} className="flex items-center gap-1">
 							<button
 								type="button"

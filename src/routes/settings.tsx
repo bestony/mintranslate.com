@@ -22,7 +22,7 @@ function SettingsRoute() {
 			<SiteHeader />
 			<main className="page-wrap py-10">
 				<header className="mb-8">
-					<h1 className="display-title mt-3 font-bold text-3xl">设置</h1>
+					<h1 className="display-title mt-4 font-bold text-3xl">设置</h1>
 					<p className="mt-2 max-w-2xl text-muted-foreground">
 						配置你自己的模型连接。密钥只保存在本浏览器，不会发送到你所配置的
 						Endpoint 以外的任何地址。

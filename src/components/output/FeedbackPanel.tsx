@@ -126,7 +126,7 @@ export function FeedbackPanel({
 	}
 
 	return (
-		<div className="flex flex-wrap items-center gap-3">
+		<div className="flex flex-wrap items-center gap-4">
 			<button
 				type="button"
 				className="nav-link min-h-11 inline-flex items-center text-xs"
@@ -182,12 +182,12 @@ export function FeedbackPanel({
 					<textarea
 						id="feedback-comment"
 						name="feedback-comment"
-						className="mt-2 min-h-24 w-full rounded-md border border-input bg-background px-3 text-sm"
+						className="mt-2 min-h-24 w-full rounded-md border border-input bg-background px-4 text-sm"
 						aria-label="修改建议"
 						value={suggestion}
 						onChange={(event) => setSuggestion(event.target.value)}
 					/>
-					<div className="mt-1 flex items-center gap-3">
+					<div className="mt-2 flex items-center gap-4">
 						<button
 							type="button"
 							className="nav-link min-h-11 inline-flex items-center text-xs disabled:opacity-40"

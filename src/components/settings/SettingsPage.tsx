@@ -31,7 +31,7 @@ import { usePwa } from "../pwa/usePwa";
 import { ConnectionForm, PresetHint } from "./ConnectionForm";
 import { PrivacyNotice } from "./PrivacyNotice";
 
-const sectionClass = "island-shell mt-6 rounded-md p-5";
+const sectionClass = "island-shell mt-6 rounded-md p-6";
 /** Primary action. `min-h-11` is the 44px touch target; the fill is the darker
     primary because white on the decorative one fails AA. */
 const buttonClass =
@@ -40,7 +40,7 @@ const ghostButtonClass =
 	"min-h-11 rounded-md border border-border px-4 text-sm disabled:opacity-50";
 /** Secondary/compact control. */
 const smallButtonClass =
-	"min-h-11 rounded-md border border-border px-3 text-muted-foreground text-xs";
+	"min-h-11 rounded-md border border-border px-4 text-muted-foreground text-xs";
 
 /** Tier and prompt-style settings. */
 function BehaviourSettings({
@@ -70,7 +70,7 @@ function BehaviourSettings({
 
 			<div className="mt-4">
 				<p className="font-medium text-sm">模型档位</p>
-				<p className="mt-1 text-muted-foreground text-xs">
+				<p className="mt-2 text-muted-foreground text-xs">
 					档位只在你已配置并测试通过的连接中选择；未配置的档位会明确提示，不会静默改用另一档。
 				</p>
 				<div className="mt-2 flex flex-wrap gap-4 text-sm">
@@ -113,7 +113,7 @@ function BehaviourSettings({
 							className={
 								style === entry.id
 									? "min-h-11 rounded-sm bg-primary-strong px-4 text-primary-foreground text-xs"
-									: "min-h-11 rounded-sm border border-border px-3 text-xs"
+									: "min-h-11 rounded-sm border border-border px-4 text-xs"
 							}
 							onClick={() => onStyleChange(entry.id)}
 						>
@@ -130,7 +130,7 @@ function BehaviourSettings({
 				<label className="block">
 					<span className="font-medium text-sm">自定义附加指令（可选）</span>
 					<textarea
-						className="mt-1 min-h-24 w-full rounded-md border border-input bg-background px-3 text-sm"
+						className="mt-2 min-h-24 w-full rounded-md border border-input bg-background px-4 text-sm"
 						id="custom-instruction"
 						name="custom-instruction"
 						value={customInstruction}
@@ -138,12 +138,12 @@ function BehaviourSettings({
 						onChange={(event) => onCustomInstructionChange(event.target.value)}
 					/>
 				</label>
-				<p className="mt-1 text-muted-foreground text-xs">
+				<p className="mt-2 text-muted-foreground text-xs">
 					{customInstruction.length} / {MAX_CUSTOM_INSTRUCTION_LENGTH}{" "}
 					字符。该指令只会附加到 用户消息侧，不会覆盖应用自身的系统级约束。
 				</p>
 				{instructionNotice && (
-					<p className="mt-1 text-foreground text-xs">{instructionNotice}</p>
+					<p className="mt-2 text-foreground text-xs">{instructionNotice}</p>
 				)}
 			</div>
 		</section>
@@ -273,7 +273,7 @@ export function SettingsPage() {
 	return (
 		<>
 			{store.loadWarning && (
-				<p className="mb-4 rounded-md border border-border bg-surface p-3 text-sm">
+				<p className="mb-4 rounded-md border border-border bg-surface p-4 text-sm">
 					{store.loadWarning}
 				</p>
 			)}
@@ -328,7 +328,7 @@ export function SettingsPage() {
 				</div>
 
 				{current ? (
-					<div className="mt-5">
+					<div className="mt-6">
 						<ConnectionForm
 							connection={current}
 							apiKey={store.keyFor(current.id)}
@@ -340,7 +340,7 @@ export function SettingsPage() {
 								store.setStatus(current.id, status, detail)
 							}
 						/>
-						<div className="mt-4 flex flex-wrap gap-3">
+						<div className="mt-4 flex flex-wrap gap-4">
 							<button
 								type="button"
 								className={buttonClass}
@@ -371,13 +371,13 @@ export function SettingsPage() {
 				)}
 
 				{!store.activeId && store.connections.length > 0 && (
-					<p className="mt-3 text-foreground text-sm ">
+					<p className="mt-4 text-foreground text-sm ">
 						当前没有生效的连接。请先通过连接测试，再点「设为当前模型」。
 					</p>
 				)}
 
 				{exportNotice && (
-					<p className="mt-3 text-muted-foreground text-sm">{exportNotice}</p>
+					<p className="mt-4 text-muted-foreground text-sm">{exportNotice}</p>
 				)}
 			</section>
 
@@ -401,7 +401,7 @@ export function SettingsPage() {
 					cookie，刷新后也不会重新加载。
 				</p>
 
-				<label className="mt-3 flex min-h-11 items-center gap-2 text-sm">
+				<label className="mt-4 flex min-h-11 items-center gap-2 text-sm">
 					<input
 						type="checkbox"
 						id="statistics-enabled"
@@ -420,7 +420,7 @@ export function SettingsPage() {
 						<input
 							id="measurement-id"
 							name="measurement-id"
-							className="mt-1 w-full max-w-sm rounded-md border border-input bg-background min-h-11 px-3 text-sm disabled:opacity-60"
+							className="mt-2 w-full max-w-sm rounded-md border border-input bg-background min-h-11 px-4 text-sm disabled:opacity-60"
 							placeholder="G-XXXXXXXXXX"
 							value={
 								analyticsBinding.idFromDeployment
@@ -436,7 +436,7 @@ export function SettingsPage() {
 							}}
 						/>
 					</label>
-					<p className="mt-1 text-muted-foreground text-xs">
+					<p className="mt-2 text-muted-foreground text-xs">
 						{analyticsBinding.idFromDeployment
 							? "当前测量 ID 由部署配置提供，无法在此处覆盖。"
 							: "留空且部署未提供时，不会加载任何统计脚本。"}
@@ -478,7 +478,7 @@ export function SettingsPage() {
 
 				<div className="mt-4">
 					<p className="font-medium text-sm">当前平台能力</p>
-					<ul className="mt-1 space-y-1 text-muted-foreground text-xs">
+					<ul className="mt-2 space-y-2 text-muted-foreground text-xs">
 						{pwa.capabilities.map((capability) => (
 							<li key={capability.id}>
 								{capability.available ? "✓" : "—"} {capability.label}
@@ -515,7 +515,7 @@ export function SettingsPage() {
 					自行备份。导出默认不包含密钥；密钥只存在本浏览器的独立存储槽中。
 				</p>
 
-				<label className="mt-3 flex min-h-11 items-center gap-2 text-sm">
+				<label className="mt-4 flex min-h-11 items-center gap-2 text-sm">
 					<input
 						type="checkbox"
 						id="export-include-keys"
@@ -526,7 +526,7 @@ export function SettingsPage() {
 					导出时包含 API Key（不推荐，会先二次确认）
 				</label>
 
-				<div className="mt-4 flex flex-wrap gap-3">
+				<div className="mt-4 flex flex-wrap gap-4">
 					<button type="button" className={buttonClass} onClick={runExport}>
 						导出配置
 					</button>
@@ -553,7 +553,7 @@ export function SettingsPage() {
 				</div>
 
 				{store.connections.length > 0 && (
-					<p className="mt-3 text-muted-foreground text-xs">
+					<p className="mt-4 text-muted-foreground text-xs">
 						当前已保存密钥：
 						{store.connections
 							.filter((connection) => store.hasKey(connection.id))

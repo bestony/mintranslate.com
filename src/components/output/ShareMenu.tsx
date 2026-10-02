@@ -129,7 +129,7 @@ export function ShareMenu({
 	}
 
 	return (
-		<div className="flex flex-wrap items-center gap-3">
+		<div className="flex flex-wrap items-center gap-4">
 			<button
 				type="button"
 				className="nav-link min-h-11 inline-flex items-center text-xs"
@@ -139,7 +139,7 @@ export function ShareMenu({
 			</button>
 
 			{open && (
-				<div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-surface min-h-11 px-2">
+				<div className="flex flex-wrap items-center gap-4 rounded-md border border-border bg-surface min-h-11 px-2">
 					<button
 						type="button"
 						className="nav-link min-h-11 inline-flex items-center text-xs"

@@ -52,7 +52,7 @@ export function SearchLookupButton({
 	}
 
 	return (
-		<div className="flex flex-wrap items-center gap-3">
+		<div className="flex flex-wrap items-center gap-4">
 			<button
 				type="button"
 				className="nav-link min-h-11 inline-flex items-center text-xs disabled:opacity-40"
