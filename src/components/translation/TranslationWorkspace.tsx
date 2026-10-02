@@ -58,6 +58,10 @@ import {
 	truncationNotice,
 } from "#/lib/translation/result";
 import { fromQueryString, writeWorkspaceUrl } from "#/lib/url-state";
+import { FeedbackPanel } from "../output/FeedbackPanel";
+import { SearchLookupButton } from "../output/SearchLookupButton";
+import { ShareMenu } from "../output/ShareMenu";
+import { SpeechControls } from "../output/SpeechControls";
 import { LanguagePicker, languageChipLabel } from "./LanguagePicker";
 
 /** How the modifier key is shown for the current platform. */
@@ -452,6 +456,15 @@ export function TranslationWorkspace() {
 		}
 	}
 
+	/**
+	 * Segmentation for speech, taken from the same pipeline that renders the
+	 * result: a second splitting rule would let the two drift apart.
+	 */
+	const segmentForSpeech = useCallback(
+		(value: string) => segmentTranslation(value).map((entry) => entry.text),
+		[],
+	);
+
 	const sourceChips = quickLanguages(store.languageUsage, [targetLang]);
 	const targetChips = quickLanguages(store.languageUsage, [sourceLang]);
 
@@ -474,6 +487,36 @@ export function TranslationWorkspace() {
 						<span className="ml-auto text-muted-foreground text-xs">
 							{modifier}+Enter 立即翻译 · {modifier}+Shift+S 交换语言
 						</span>
+					</div>
+
+					{/* Output actions act on the translation that was just produced, so they
+					    sit directly under the toolbar rather than in a side menu. */}
+					<div className="mt-3 flex flex-col gap-2">
+						<SpeechControls
+							sourceText={text}
+							sourceLang={sourceLang}
+							targetText={output}
+							targetLang={targetLang}
+							segment={segmentForSpeech}
+						/>
+						{output !== "" && (
+							<>
+								<ShareMenu
+									sourceLang={sourceLang}
+									targetLang={targetLang}
+									sourceText={text}
+									targetText={output}
+								/>
+								<SearchLookupButton targetText={output} />
+								<FeedbackPanel
+									key={output}
+									sourceText={text}
+									targetText={output}
+									sourceLang={sourceLang}
+									targetLang={targetLang}
+								/>
+							</>
+						)}
 					</div>
 				</div>
 
