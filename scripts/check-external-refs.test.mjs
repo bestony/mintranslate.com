@@ -38,10 +38,18 @@ function runChecker(files, env = {}) {
 	let exitCode = 0
 	let stdout = ''
 	try {
+		// Start from a controlled environment: the analytics variables decide whether
+		// the gate allows the analytics origin, so inheriting them from the shell would
+		// make these assertions depend on how the developer's session happens to be set
+		// up. A case opts in by passing them explicitly.
+		const baseEnv = { ...process.env }
+		delete baseEnv.VITE_GA_MEASUREMENT_ID
+		delete baseEnv.VITE_GA_ENABLED
+
 		stdout = execFileSync('node', [CHECKER, dir], {
 			encoding: 'utf8',
 			stdio: ['ignore', 'pipe', 'pipe'],
-			env: { ...process.env, ...env },
+			env: { ...baseEnv, ...env },
 		})
 	} catch (error) {
 		exitCode = error.status ?? 1
