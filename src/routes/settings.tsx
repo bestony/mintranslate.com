@@ -29,6 +29,9 @@ function SettingsRoute() {
 						<Link to="/" className="nav-link">
 							翻译
 						</Link>
+						<Link to="/history" className="nav-link">
+							历史
+						</Link>
 						<Link to="/settings" className="nav-link">
 							设置
 						</Link>

@@ -113,10 +113,8 @@ export async function createAdapter(
 			});
 		}
 
-		case "openai":
-		case "deepseek":
-		case "openrouter":
-		// `custom` falls through to `default`: it is an OpenAI-protocol endpoint.
+		// `openai`, `deepseek`, `openrouter` and `custom` all use the compatible
+		// adapter, so they are handled by `default` rather than by redundant labels.
 		default: {
 			// Every OpenAI-protocol endpoint goes through the compatible adapter, so
 			// a self-hosted gateway and a built-in preset share one code path.

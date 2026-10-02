@@ -28,6 +28,13 @@ import {
 	type TranslationStyleId,
 } from "#/lib/connections/styles";
 import {
+	DEFAULT_RECORD_LIMIT,
+	evictOverLimit,
+	openHistoryDatabase,
+	setFavorite,
+	writeRecord,
+} from "#/lib/history/db";
+import {
 	AUTO_DETECT,
 	canSwap,
 	DEFAULT_TARGET,
@@ -72,6 +79,12 @@ export function TranslationWorkspace() {
 	const [output, setOutput] = useState("");
 	const [pending, setPending] = useState(false);
 	const [detected, setDetected] = useState<string | undefined>(undefined);
+
+	// `detectedRef` mirrors `detected` so the success callback can read the value
+	// without re-creating the controller on every detection change.
+	useEffect(() => {
+		detectedRef.current = detected;
+	}, [detected]);
 	const [notice, setNotice] = useState<string | undefined>(undefined);
 	const [failure, setFailure] = useState<string | undefined>(undefined);
 	const [picker, setPicker] = useState<"source" | "target" | undefined>(
@@ -79,6 +92,41 @@ export function TranslationWorkspace() {
 	);
 	const [copied, setCopied] = useState(false);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
+	/**
+	 * The history database, opened on first use.
+	 *
+	 * `undefined` means "not opened yet" and `null` means "unavailable": history
+	 * is optional, so a browser that refuses IndexedDB must not affect
+	 * translation at all.
+	 */
+	const historyDb = useRef<Promise<IDBDatabase | null> | null>(null);
+	/** Start time of the in-flight translation, for an optional duration field. */
+	const runStartedAt = useRef<number | undefined>(undefined);
+	/** Input that produced the in-flight request, captured at send time. */
+	const lastInput = useRef<
+		{ text: string; sourceLang: string; targetLang: string } | undefined
+	>(undefined);
+	/** Latest detected language, readable from the success callback. */
+	const detectedRef = useRef<string | undefined>(undefined);
+	/** Id of the record written for the most recent success, for the save button. */
+	const [lastRecordId, setLastRecordId] = useState<string | undefined>(
+		undefined,
+	);
+	const [saved, setSaved] = useState(false);
+
+	/** Open the history database once, caching the outcome. */
+	const getHistoryDb = useCallback(async (): Promise<IDBDatabase | null> => {
+		if (historyDb.current === null) {
+			historyDb.current = openHistoryDatabase().then((result) => {
+				if (!result.ok) {
+					logger.warn("history.open.failed", { reason: result.reason });
+					return null;
+				}
+				return result.db;
+			});
+		}
+		return historyDb.current;
+	}, []);
 	/** Prompt style and custom instruction, as configured in settings. */
 	const [promptStyle, setPromptStyle] = useState<TranslationStyleId>("free");
 	const [customInstruction, setCustomInstruction] = useState("");
@@ -128,6 +176,66 @@ export function TranslationWorkspace() {
 		writeWorkspaceUrl({ sourceLang, targetLang, text, mode: "translate" });
 	}, [sourceLang, targetLang, text]);
 
+	/**
+	 * Write one finished translation to local history.
+	 *
+	 * Called only from the success callback. Failures are logged and swallowed:
+	 * history is a convenience, and a storage problem must never surface as a
+	 * translation error.
+	 */
+	const persistHistory = useCallback(
+		async (entry: {
+			readonly sourceText: string;
+			readonly targetText: string;
+			readonly sourceLang: string;
+			readonly targetLang: string;
+			readonly model: string;
+			readonly detectedLang?: string;
+			readonly durationMs?: number;
+		}) => {
+			if (entry.sourceText.trim() === "" || entry.targetText.trim() === "")
+				return;
+
+			try {
+				const db = await getHistoryDb();
+				if (!db) return;
+
+				const result = await writeRecord(db, {
+					sourceText: entry.sourceText,
+					targetText: entry.targetText,
+					sourceLang: entry.sourceLang,
+					targetLang: entry.targetLang,
+					model: entry.model,
+					...(entry.detectedLang !== undefined && {
+						detectedLang: entry.detectedLang,
+					}),
+					...(entry.durationMs !== undefined && {
+						durationMs: entry.durationMs,
+					}),
+				});
+
+				if (!result.ok) {
+					logger.warn("history.write.failed", { reason: result.reason });
+					return;
+				}
+
+				setLastRecordId(result.record.id);
+				// A fresh success is not the saved state of the previous one.
+				setSaved(result.record.favorite);
+
+				const evicted = await evictOverLimit(db, DEFAULT_RECORD_LIMIT);
+				logger.info("history.write.done", {
+					inserted: result.inserted,
+					evicted,
+					textLength: entry.sourceText.length,
+				});
+			} catch (error) {
+				logger.warn("history.write.error", { error });
+			}
+		},
+		[getHistoryDb],
+	);
+
 	const controller = useMemo(
 		() =>
 			createTranslationController({
@@ -143,6 +251,23 @@ export function TranslationWorkspace() {
 						setPending(false);
 						// Feeds the quick-switch chips with the user's real habits.
 						store.noteLanguageUse(targetLang);
+
+						// History is written here and only here: `onSuccess` fires for the
+						// final result of a request that was not superseded, so streaming
+						// chunks and abandoned requests never reach the store. That also
+						// means no extra debounce is needed on this path.
+						void persistHistory({
+							sourceText: lastInput.current?.text ?? "",
+							targetText: result,
+							sourceLang: lastInput.current?.sourceLang ?? sourceLang,
+							targetLang: lastInput.current?.targetLang ?? targetLang,
+							model: active?.model ?? "",
+							detectedLang: detectedRef.current,
+							durationMs:
+								runStartedAt.current === undefined
+									? undefined
+									: Date.now() - runStartedAt.current,
+						});
 					},
 					onFailure: (_id, error) => {
 						// The input is deliberately left untouched, and any previous
@@ -156,10 +281,21 @@ export function TranslationWorkspace() {
 					},
 					onSuperseded: () => {
 						// A newer request is already in flight; it owns the pending flag.
+						// No history write: an abandoned request is not a translation the
+						// user asked to keep.
 					},
 				},
 				run: async ({ input, signal, onChunk, requestId }) => {
 					if (!active) throw new Error("no active connection");
+					runStartedAt.current = Date.now();
+					// Capture the input this request was built from, so the success
+					// callback records what was sent rather than whatever is in the box
+					// by the time the response arrives.
+					lastInput.current = {
+						text: input.text,
+						sourceLang: input.sourceLang,
+						targetLang: input.targetLang,
+					};
 
 					const prompt = assemblePrompt({
 						styleId: promptStyle,
@@ -205,6 +341,8 @@ export function TranslationWorkspace() {
 			promptStyle,
 			customInstruction,
 			targetLang,
+			persistHistory,
+			sourceLang,
 		],
 	);
 
@@ -287,6 +425,22 @@ export function TranslationWorkspace() {
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
 	}, [controller, swap, picker]);
+
+	/** Mark the record written for the latest translation as a favourite. */
+	async function toggleSaved() {
+		if (lastRecordId === undefined) return;
+		try {
+			const db = await getHistoryDb();
+			if (!db) return;
+
+			const next = !saved;
+			await setFavorite(db, lastRecordId, next);
+			setSaved(next);
+			logger.debug("history.favorite.toggled", { favorite: next });
+		} catch (error) {
+			logger.warn("history.favorite.failed", { error });
+		}
+	}
 
 	async function copy() {
 		const outcome = await copyPlainText(toPlainText(segments));
@@ -454,13 +608,29 @@ export function TranslationWorkspace() {
 							</button>
 						))}
 						{output !== "" && (
-							<button
-								type="button"
-								className="ml-auto nav-link text-xs"
-								onClick={copy}
-							>
-								{copied ? "译文已复制" : "复制译文"}
-							</button>
+							<div className="ml-auto flex items-center gap-3">
+								<button
+									type="button"
+									className="nav-link text-xs disabled:opacity-40"
+									aria-pressed={saved}
+									disabled={lastRecordId === undefined}
+									title={
+										lastRecordId === undefined
+											? "本次译文尚未写入历史"
+											: undefined
+									}
+									onClick={() => void toggleSaved()}
+								>
+									{saved ? "已保存" : "保存翻译"}
+								</button>
+								<button
+									type="button"
+									className="nav-link text-xs"
+									onClick={copy}
+								>
+									{copied ? "译文已复制" : "复制译文"}
+								</button>
+							</div>
 						)}
 					</div>
 

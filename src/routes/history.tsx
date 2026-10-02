@@ -1,20 +1,19 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 
-import { TranslationWorkspace } from "#/components/translation/TranslationWorkspace";
+import { HistoryPage } from "#/components/history/HistoryPage";
 
-export const Route = createFileRoute("/")({ component: Home });
+export const Route = createFileRoute("/history")({ component: HistoryRoute });
 
 /**
- * Translation workspace route.
+ * History route.
  *
- * The workspace is now the application's home. It reads its state from the URL
- * and drives the translation controller; see the component for how the pieces
- * compose.
+ * Uses the same shell as the workspace and settings so navigation and the
+ * responsive breakpoints behave identically on all three pages.
  *
- * No loader: the shell is prerendered without a backend, so the route must render
- * from client state alone.
+ * No loader: the page reads IndexedDB, which is unavailable while prerendering
+ * the shell, so it must render from client state.
  */
-function Home() {
+function HistoryRoute() {
 	return (
 		<>
 			<header className="border-line border-b bg-header-bg">
@@ -35,7 +34,7 @@ function Home() {
 					</nav>
 				</div>
 			</header>
-			<TranslationWorkspace />
+			<HistoryPage />
 		</>
 	);
 }
