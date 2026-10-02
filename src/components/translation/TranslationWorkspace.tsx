@@ -114,8 +114,9 @@ function useModifierLabel(): string {
 /** One connection's limiter set, shared across the component's lifetime. */
 const limiters = createKeyedLimiters(2);
 
-/** Chip sizes. */
-const CHIP = "min-h-11 shrink-0 rounded-sm px-4 text-xs";
+/** Chip sizes and alignment. */
+const CHIP =
+	"inline-flex items-center justify-center min-h-11 shrink-0 rounded-sm px-4 text-xs";
 
 /**
  * Quick entries shown below the breakpoint.
@@ -164,15 +165,22 @@ function MobileSwapButton({
 /**
  * Language chip classes.
  *
+ * Every chip is an inline-flex container centered on both axes so text sits
+ * vertically centered regardless of platform or screen size. Entries hidden
+ * below md omit the base `inline-flex` to avoid overriding `hidden` on mobile.
+ *
  * The selected chip fills with the action colour and uses white text — the same
  * pair as a primary button, so "this is the active choice" reads the same way
  * everywhere. A tinted background was not enough: `bg-primary/10` on a white
  * surface is visually near-identical to an unselected chip's plain white.
  */
-function chipClass(selected: boolean): string {
+function chipClass(selected: boolean, mobileHidden = false): string {
+	const base = mobileHidden
+		? "hidden md:inline-flex items-center justify-center min-h-11 shrink-0 rounded-sm px-4 text-xs"
+		: CHIP;
 	return selected
-		? `${CHIP} border border-transparent bg-primary-strong text-primary-foreground`
-		: `${CHIP} border border-border`;
+		? `${base} border border-transparent bg-primary-strong text-primary-foreground`
+		: `${base} border border-border`;
 }
 
 export function TranslationWorkspace() {
@@ -945,9 +953,10 @@ export function TranslationWorkspace() {
 								type="button"
 								aria-pressed={sourceLang === code}
 								aria-current={sourceLang === code ? "true" : undefined}
-								className={`${chipClass(sourceLang === code)} ${
-									index >= MOBILE_CHIP_COUNT ? "hidden md:inline-flex" : ""
-								}`}
+								className={chipClass(
+									sourceLang === code,
+									index >= MOBILE_CHIP_COUNT,
+								)}
 								onClick={() => {
 									setSourceLang(code);
 									setDetected(undefined);
@@ -1080,9 +1089,10 @@ export function TranslationWorkspace() {
 								type="button"
 								aria-pressed={targetLang === code}
 								aria-current={targetLang === code ? "true" : undefined}
-								className={`${chipClass(targetLang === code)} ${
-									index >= MOBILE_CHIP_COUNT ? "hidden md:inline-flex" : ""
-								}`}
+								className={chipClass(
+									targetLang === code,
+									index >= MOBILE_CHIP_COUNT,
+								)}
 								onClick={() => {
 									const resolved = resolveTargetConflict(
 										{ source: sourceLang, target: code },
