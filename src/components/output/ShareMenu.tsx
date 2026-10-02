@@ -132,30 +132,38 @@ export function ShareMenu({
 		<div className="flex flex-wrap items-center gap-3">
 			<button
 				type="button"
-				className="nav-link text-xs"
+				className="nav-link min-h-11 inline-flex items-center text-xs"
 				onClick={() => void handlePrimary()}
 			>
 				分享
 			</button>
 
 			{open && (
-				<div className="flex flex-wrap items-center gap-3 rounded-md border border-line bg-surface/60 px-2 py-1">
+				<div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-surface min-h-11 px-2">
 					<button
 						type="button"
-						className="nav-link text-xs"
+						className="nav-link min-h-11 inline-flex items-center text-xs"
 						onClick={() => void copyLink()}
 					>
 						复制链接
 					</button>
-					<button type="button" className="nav-link text-xs" onClick={mail}>
+					<button
+						type="button"
+						className="nav-link min-h-11 inline-flex items-center text-xs"
+						onClick={mail}
+					>
 						邮件
 					</button>
-					<button type="button" className="nav-link text-xs" onClick={social}>
+					<button
+						type="button"
+						className="nav-link min-h-11 inline-flex items-center text-xs"
+						onClick={social}
+					>
 						社交平台
 					</button>
 					<button
 						type="button"
-						className="nav-link text-xs"
+						className="nav-link min-h-11 inline-flex items-center text-xs"
 						onClick={() => setOpen(false)}
 					>
 						关闭
@@ -165,7 +173,7 @@ export function ShareMenu({
 
 			{/* Sharing a partial link must be stated, not discovered by the receiver. */}
 			{!link.includesText && (
-				<span className="text-xs text-amber-600">{link.notice}</span>
+				<span className="text-xs text-foreground">{link.notice}</span>
 			)}
 
 			{message !== undefined && (

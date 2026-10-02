@@ -1,9 +1,15 @@
 /**
  * Speech controls.
  *
- * Binds the tested speech logic (`src/lib/speech`) to the interface. The only
- * browser-specific part — `window.speechSynthesis` — comes in through the
- * engine factory, so this component contains no speech policy of its own.
+ * Speech is a **global** resource: `window.speechSynthesis` plays one utterance at
+ * a time, so starting the source while the target is speaking must stop the
+ * target. That is why the engine and controller live in a single hook
+ * (`useSpeech`) that the workspace calls once, while the buttons are placed in
+ * whichever panel they belong to.
+ *
+ * An earlier revision rendered one component owning both sides and an entire row
+ * of the layout. That coupled the audio model to the layout, which is exactly what
+ * prevented the read-aloud controls from sitting in their own panels' toolbars.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -22,65 +28,39 @@ import {
 	type SpeechRate,
 } from "#/lib/speech/rates";
 
-interface SpeechControlsProps {
-	/** Text shown in the source area. */
-	readonly sourceText: string;
-	readonly sourceLang: string;
-	/** Text shown in the result area. */
-	readonly targetText: string;
-	readonly targetLang: string;
-	/**
-	 * Splits text for sequential playback. Supplied by the workspace so speech
-	 * uses exactly the same segmentation as the rendered result.
-	 */
-	readonly segment: (text: string) => readonly string[];
+/** Which side is currently speaking. */
+export type SpeechSide = "source" | "target";
+
+/** The speech capability, owned once by the workspace. */
+export interface SpeechBinding {
+	/** Whether the browser provides speech synthesis. Resolved after mount. */
+	readonly available: boolean;
+	readonly speakingSide: SpeechSide | undefined;
+	readonly rate: SpeechRate;
+	setRate(rate: SpeechRate): void;
+	/** Speak this side, or stop it if it is already speaking. */
+	toggle(side: SpeechSide, text: string, lang: string): void;
+	stop(): void;
+	/** Play a short sample at a candidate rate. */
+	preview(rate: SpeechRate, lang: string): void;
 }
 
-/** A single speak/stop button pair for one side. */
-function SpeakButton({
-	label,
-	disabled,
-	reason,
-	speaking,
-	onSpeak,
-	onStop,
-}: {
-	readonly label: string;
-	readonly disabled: boolean;
-	readonly reason?: string;
-	readonly speaking: boolean;
-	readonly onSpeak: () => void;
-	readonly onStop: () => void;
-}) {
-	return (
-		<button
-			type="button"
-			className="nav-link text-xs disabled:opacity-40"
-			disabled={disabled}
-			title={disabled ? reason : undefined}
-			aria-pressed={speaking}
-			onClick={speaking ? onStop : onSpeak}
-		>
-			{speaking ? `停止${label}` : label}
-		</button>
+/**
+ * Own the speech engine, controller and rate preference.
+ *
+ * Call once per workspace. Passing the same `segment` used for rendering keeps
+ * playback and display on one splitting rule.
+ */
+export function useSpeech(
+	segment: (text: string) => readonly string[],
+): SpeechBinding {
+	const [rate, setRateState] = useState<SpeechRate>("normal");
+	const [speakingSide, setSpeakingSide] = useState<SpeechSide | undefined>(
+		undefined,
 	);
-}
-
-export function SpeechControls({
-	sourceText,
-	sourceLang,
-	targetText,
-	targetLang,
-	segment,
-}: SpeechControlsProps) {
-	const [rate, setRate] = useState<SpeechRate>("normal");
-	const [speakingSide, setSpeakingSide] = useState<
-		"source" | "target" | undefined
-	>(undefined);
-	const [showRates, setShowRates] = useState(false);
 	const controllerRef = useRef<SpeechController | undefined>(undefined);
 
-	/** One engine for the component's lifetime. */
+	/** One engine for the workspace's lifetime. */
 	const engine = useMemo(() => createBrowserSpeechEngine(), []);
 
 	/**
@@ -119,101 +99,169 @@ export function SpeechControls({
 
 	// Restore the saved rate once, and stop speech on unmount.
 	useEffect(() => {
-		setRate(loadSpeechRate());
+		setRateState(loadSpeechRate());
 		return () => controller.dispose();
 	}, [controller]);
 
-	const speak = useCallback(
-		async (side: "source" | "target") => {
-			const text = side === "source" ? sourceText : targetText;
-			const language = side === "source" ? sourceLang : targetLang;
-			if (text.trim() === "") return;
-
-			setSpeakingSide(side);
+	// Never leave audio playing after the workspace goes away. Speech is global
+	// state, so a lingering utterance would outlive the interface that started it.
+	useEffect(
+		() => () => {
 			try {
-				await controller.speak(text, { rate: rateValue(rate), language });
-			} catch (error) {
-				logger.warn("speech.failed", { error });
-				setSpeakingSide(undefined);
+				controller.stop();
+			} catch {
+				// A disposed engine cannot stop; nothing to do.
 			}
 		},
-		[controller, rate, sourceLang, sourceText, targetLang, targetText],
+		[controller],
 	);
 
-	function preview(tier: SpeechRate) {
+	const toggle = useCallback<SpeechBinding["toggle"]>(
+		(side, text, lang) => {
+			if (text.trim() === "") return;
+
+			// Toggling the active side stops it; toggling the other side switches,
+			// which is why the controller is asked to stop first.
+			if (speakingSide === side) {
+				controller.stop();
+				setSpeakingSide(undefined);
+				return;
+			}
+
+			controller.stop();
+			setSpeakingSide(side);
+
+			void controller
+				.speak(text, { rate: rateValue(rate), language: lang })
+				.catch((error: unknown) => {
+					logger.warn("speech.failed", { error });
+					setSpeakingSide(undefined);
+				});
+		},
+		[controller, rate, speakingSide],
+	);
+
+	const stop = useCallback(() => {
+		controller.stop();
 		setSpeakingSide(undefined);
-		void controller.speak(RATE_PREVIEW_TEXT, {
-			rate: rateValue(tier),
-			language: targetLang,
-		});
-	}
+	}, [controller]);
 
-	function chooseRate(tier: SpeechRate) {
-		setRate(tier);
-		saveSpeechRate(tier);
-	}
+	const setRate = useCallback((next: SpeechRate) => {
+		setRateState(next);
+		saveSpeechRate(next);
+	}, []);
 
-	const sourceBlocked = !available || sourceText.trim() === "";
-	const targetBlocked = !available || targetText.trim() === "";
-	const unavailableReason = available
-		? "没有可朗读的内容"
-		: "当前浏览器不支持语音朗读";
+	const preview = useCallback(
+		(next: SpeechRate, lang: string) => {
+			setSpeakingSide(undefined);
+			void controller
+				.speak(RATE_PREVIEW_TEXT, { rate: rateValue(next), language: lang })
+				.catch(() => {
+					// A preview failure needs no report; the rate still applies.
+				});
+		},
+		[controller],
+	);
+
+	return { available, speakingSide, rate, setRate, toggle, stop, preview };
+}
+
+/** Colour a disabled control's explanation. */
+function blockedReason(available: boolean, text: string): string {
+	if (!available) return "当前浏览器不支持语音朗读";
+	return text;
+}
+
+/**
+ * Read-aloud control for one panel.
+ *
+ * Presentational only: the audio itself belongs to the binding, so placing this in
+ * either panel cannot start a second engine.
+ */
+export function SpeechButton({
+	side,
+	label,
+	binding,
+	text,
+	lang,
+}: {
+	readonly side: SpeechSide;
+	readonly label: string;
+	readonly binding: SpeechBinding;
+	readonly text: string;
+	readonly lang: string;
+}) {
+	const empty = text.trim() === "";
+	const speaking = binding.speakingSide === side;
 
 	return (
-		<div className="flex flex-wrap items-center gap-3">
-			<SpeakButton
-				label="朗读原文"
-				disabled={sourceBlocked}
-				reason={unavailableReason}
-				speaking={speakingSide === "source"}
-				onSpeak={() => void speak("source")}
-				onStop={() => controller.stop()}
-			/>
-			<SpeakButton
-				label="朗读译文"
-				disabled={targetBlocked}
-				reason={unavailableReason}
-				speaking={speakingSide === "target"}
-				onSpeak={() => void speak("target")}
-				onStop={() => controller.stop()}
-			/>
+		<button
+			type="button"
+			// 44px minimum touch target via padding, not font size.
+			className="nav-link min-h-11 text-xs disabled:opacity-40"
+			disabled={!binding.available || empty}
+			title={
+				binding.available
+					? empty
+						? "没有可朗读的内容"
+						: undefined
+					: blockedReason(binding.available, "")
+			}
+			aria-pressed={speaking}
+			onClick={() => binding.toggle(side, text, lang)}
+		>
+			{speaking ? `停止${label}` : label}
+		</button>
+	);
+}
 
+/**
+ * Speaking-rate control.
+ *
+ * Lives beside the read-aloud control it affects. The rate is shared by both
+ * sides, so one control reflects and changes it for all of them.
+ */
+export function SpeechRateControl({
+	binding,
+	lang,
+}: {
+	readonly binding: SpeechBinding;
+	readonly lang: string;
+}) {
+	const [open, setOpen] = useState(false);
+
+	return (
+		<>
 			<button
 				type="button"
-				className="nav-link text-xs disabled:opacity-40"
-				disabled={!available}
-				aria-expanded={showRates}
-				onClick={() => setShowRates((current) => !current)}
+				className="nav-link min-h-11 text-xs disabled:opacity-40"
+				disabled={!binding.available}
+				aria-expanded={open}
+				onClick={() => setOpen((current) => !current)}
 			>
-				语速：{rateLabel(rate)}
+				语速：{rateLabel(binding.rate)}
 			</button>
 
-			{!available && (
-				<span className="text-muted-foreground text-xs">
-					当前环境不支持语音朗读，朗读入口已禁用。
-				</span>
-			)}
-
-			{showRates && available && (
-				<div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface/60 px-2 py-1">
+			{open && binding.available && (
+				<div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface min-h-11 px-2">
 					{SPEECH_RATES.map((tier) => (
 						<div key={tier} className="flex items-center gap-1">
 							<button
 								type="button"
 								className={
-									rate === tier
-										? "rounded-full border border-primary bg-primary/10 px-2 py-0.5 text-xs"
-										: "rounded-full border border-input px-2 py-0.5 text-xs"
+									binding.rate === tier
+										? "min-h-11 rounded-sm border border-primary bg-primary/10 px-2 text-xs"
+										: "min-h-11 rounded-sm border border-border px-2 text-xs"
 								}
-								aria-pressed={rate === tier}
-								onClick={() => chooseRate(tier)}
+								aria-pressed={binding.rate === tier}
+								onClick={() => binding.setRate(tier)}
 							>
 								{rateLabel(tier)}
 							</button>
 							<button
 								type="button"
-								className="nav-link text-xs"
-								onClick={() => preview(tier)}
+								className="nav-link min-h-11 text-xs"
+								onClick={() => binding.preview(tier, lang)}
 							>
 								试听
 							</button>
@@ -221,6 +269,6 @@ export function SpeechControls({
 					))}
 				</div>
 			)}
-		</div>
+		</>
 	);
 }

@@ -270,7 +270,7 @@ export function HistoryPage() {
 		return (
 			<main className="page-wrap py-10">
 				<h1 className="display-title font-bold text-3xl">历史记录</h1>
-				<p className="mt-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+				<p className="mt-4 rounded-md border border-border bg-surface p-3 text-sm">
 					当前环境无法使用本地历史：{opened.reason}。翻译功能不受影响。
 				</p>
 			</main>
@@ -289,7 +289,7 @@ export function HistoryPage() {
 			</div>
 
 			{overLimit && (
-				<p className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+				<p className="mt-3 rounded-md border border-border bg-surface p-3 text-sm">
 					本地记录已超过 {DEFAULT_RECORD_LIMIT} 条上限（收藏项不会被自动清理）。
 					建议导出备份后清理部分记录。
 				</p>
@@ -301,13 +301,13 @@ export function HistoryPage() {
 					id="history-search"
 					name="history-search"
 					aria-label="搜索历史记录"
-					className="w-full max-w-sm rounded-md border border-input bg-background px-3 py-2 text-sm"
+					className="min-h-11 w-full max-w-sm rounded-md border border-input bg-background px-3 text-sm"
 					placeholder="搜索原文或译文"
 					value={search.input}
 					onChange={(event) => search.setInput(event.target.value)}
 				/>
 
-				<label className="flex items-center gap-2 text-sm">
+				<label className="flex min-h-11 items-center gap-2 text-sm">
 					<input
 						type="checkbox"
 						id="history-favorites-only"
@@ -322,7 +322,7 @@ export function HistoryPage() {
 					id="history-source-language"
 					name="history-source-language"
 					aria-label="按源语言筛选"
-					className="rounded-md border border-input bg-background px-2 py-2 text-sm"
+					className="min-h-11 rounded-md border border-input bg-background px-3 text-sm"
 					value={sourceLang}
 					onChange={(event) => setSourceLang(event.target.value)}
 				>
@@ -338,7 +338,7 @@ export function HistoryPage() {
 					id="history-target-language"
 					name="history-target-language"
 					aria-label="按目标语言筛选"
-					className="rounded-md border border-input bg-background px-2 py-2 text-sm"
+					className="min-h-11 rounded-md border border-input bg-background px-3 text-sm"
 					value={targetLang}
 					onChange={(event) => setTargetLang(event.target.value)}
 				>
@@ -355,7 +355,7 @@ export function HistoryPage() {
 			<div className="mt-4 flex flex-wrap gap-2 text-sm">
 				<button
 					type="button"
-					className="rounded-md border border-input px-3 py-2 disabled:opacity-40"
+					className="rounded-md border border-input min-h-11 px-3 disabled:opacity-40"
 					disabled={selected.size === 0}
 					onClick={() =>
 						setConfirming(confirming === "batch" ? undefined : "batch")
@@ -368,14 +368,14 @@ export function HistoryPage() {
 					<>
 						<button
 							type="button"
-							className="rounded-md bg-destructive px-3 py-2 text-destructive-foreground"
+							className="rounded-md bg-primary-strong min-h-11 px-3 text-primary-foreground"
 							onClick={confirmBatchDelete}
 						>
 							确认删除
 						</button>
 						<button
 							type="button"
-							className="rounded-md border border-input px-3 py-2"
+							className="rounded-md border border-input min-h-11 px-3"
 							onClick={() => setConfirming(undefined)}
 						>
 							取消
@@ -385,21 +385,21 @@ export function HistoryPage() {
 
 				<button
 					type="button"
-					className="rounded-md border border-input px-3 py-2"
+					className="rounded-md border border-input min-h-11 px-3"
 					onClick={() => runExport("json", "all")}
 				>
 					导出全部 JSON
 				</button>
 				<button
 					type="button"
-					className="rounded-md border border-input px-3 py-2"
+					className="rounded-md border border-input min-h-11 px-3"
 					onClick={() => runExport("csv", "all")}
 				>
 					导出全部 CSV
 				</button>
 				<button
 					type="button"
-					className="rounded-md border border-input px-3 py-2 disabled:opacity-40"
+					className="rounded-md border border-input min-h-11 px-3 disabled:opacity-40"
 					disabled={selected.size === 0}
 					onClick={() => runExport("json", "selected")}
 				>
@@ -407,7 +407,7 @@ export function HistoryPage() {
 				</button>
 				<button
 					type="button"
-					className="rounded-md border border-input px-3 py-2"
+					className="rounded-md border border-input min-h-11 px-3"
 					onClick={() => fileRef.current?.click()}
 				>
 					导入
@@ -430,8 +430,8 @@ export function HistoryPage() {
 					type="button"
 					className={
 						confirming === "clear"
-							? "rounded-md bg-destructive px-3 py-2 text-destructive-foreground"
-							: "ml-auto rounded-md border border-input px-3 py-2"
+							? "min-h-11 rounded-md bg-primary-strong px-4 text-primary-foreground"
+							: "ml-auto min-h-11 rounded-md border border-border px-4"
 					}
 					onClick={() => {
 						if (confirming === "clear") void confirmClear();
@@ -443,7 +443,7 @@ export function HistoryPage() {
 				{confirming === "clear" && (
 					<button
 						type="button"
-						className="rounded-md border border-input px-3 py-2"
+						className="rounded-md border border-input min-h-11 px-3"
 						onClick={() => setConfirming(undefined)}
 					>
 						取消
@@ -452,13 +452,13 @@ export function HistoryPage() {
 			</div>
 
 			{failure !== undefined && (
-				<p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+				<p className="mt-3 rounded-md border border-border bg-surface p-3 text-sm">
 					{failure}
 				</p>
 			)}
 
 			{importReport !== undefined && (
-				<p className="mt-3 rounded-md border border-line bg-surface/60 p-3 text-sm">
+				<p className="mt-3 rounded-md border border-border bg-surface p-3 text-sm">
 					导入完成：新增/更新 {importReport.imported} 条，跳过{" "}
 					{importReport.skipped} 条。
 					{importReport.reasons.length > 0 && (
@@ -480,7 +480,7 @@ export function HistoryPage() {
 
 			{/* List */}
 			<VirtualList
-				className="mt-4 h-[60vh] overflow-y-auto rounded-xl border border-line"
+				className="mt-4 h-[60vh] overflow-y-auto rounded-md border border-border"
 				items={shown}
 				rowHeight={ROW_HEIGHT}
 				onEndReached={() => {
@@ -496,7 +496,7 @@ export function HistoryPage() {
 					</p>
 				}
 				renderItem={(record) => (
-					<div className="flex h-full items-start gap-3 border-line border-b px-3 py-2">
+					<div className="flex h-full items-start gap-3 border-border border-b min-h-11 px-3">
 						<input
 							type="checkbox"
 							id={`history-select-${record.id}`}
@@ -531,7 +531,7 @@ export function HistoryPage() {
 						<div className="flex shrink-0 gap-2 text-xs">
 							<button
 								type="button"
-								className="nav-link"
+								className="nav-link min-h-11 inline-flex items-center"
 								aria-pressed={record.favorite}
 								onClick={() => void toggleFavorite(record)}
 							>
@@ -539,7 +539,7 @@ export function HistoryPage() {
 							</button>
 							<button
 								type="button"
-								className="nav-link"
+								className="nav-link min-h-11 inline-flex items-center"
 								onClick={() => void removeOne(record)}
 							>
 								删除

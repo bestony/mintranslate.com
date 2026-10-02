@@ -129,7 +129,7 @@ export function FeedbackPanel({
 		<div className="flex flex-wrap items-center gap-3">
 			<button
 				type="button"
-				className="nav-link text-xs"
+				className="nav-link min-h-11 inline-flex items-center text-xs"
 				aria-expanded={open}
 				onClick={() => setOpen((current) => !current)}
 			>
@@ -137,24 +137,24 @@ export function FeedbackPanel({
 			</button>
 
 			{open && (
-				<div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface/60 px-2 py-1">
+				<div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface min-h-11 px-2">
 					<button
 						type="button"
-						className="nav-link text-xs"
+						className="nav-link min-h-11 inline-flex items-center text-xs"
 						onClick={() => void submit("good")}
 					>
 						质量很好
 					</button>
 					<button
 						type="button"
-						className="nav-link text-xs"
+						className="nav-link min-h-11 inline-flex items-center text-xs"
 						onClick={() => void submit("bad")}
 					>
 						翻译质量很差
 					</button>
 					<button
 						type="button"
-						className="nav-link text-xs"
+						className="nav-link min-h-11 inline-flex items-center text-xs"
 						aria-pressed={editingSuggestion}
 						onClick={() => {
 							setEditingSuggestion(true);
@@ -169,7 +169,7 @@ export function FeedbackPanel({
 					</button>
 					<button
 						type="button"
-						className="nav-link text-xs"
+						className="nav-link min-h-11 inline-flex items-center text-xs"
 						onClick={() => void exportAll()}
 					>
 						导出反馈
@@ -182,7 +182,7 @@ export function FeedbackPanel({
 					<textarea
 						id="feedback-comment"
 						name="feedback-comment"
-						className="mt-2 h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+						className="mt-2 min-h-24 w-full rounded-md border border-input bg-background px-3 text-sm"
 						aria-label="修改建议"
 						value={suggestion}
 						onChange={(event) => setSuggestion(event.target.value)}
@@ -190,7 +190,7 @@ export function FeedbackPanel({
 					<div className="mt-1 flex items-center gap-3">
 						<button
 							type="button"
-							className="nav-link text-xs disabled:opacity-40"
+							className="nav-link min-h-11 inline-flex items-center text-xs disabled:opacity-40"
 							disabled={suggestion.trim() === ""}
 							onClick={() => void submit("suggestion", suggestion)}
 						>
@@ -198,7 +198,7 @@ export function FeedbackPanel({
 						</button>
 						<button
 							type="button"
-							className="nav-link text-xs"
+							className="nav-link min-h-11 inline-flex items-center text-xs"
 							onClick={() => setEditingSuggestion(false)}
 						>
 							取消

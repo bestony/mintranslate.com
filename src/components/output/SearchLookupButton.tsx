@@ -55,7 +55,7 @@ export function SearchLookupButton({
 		<div className="flex flex-wrap items-center gap-3">
 			<button
 				type="button"
-				className="nav-link text-xs disabled:opacity-40"
+				className="nav-link min-h-11 inline-flex items-center text-xs disabled:opacity-40"
 				disabled={disabled}
 				title={disabled ? "没有可检索的译文" : undefined}
 				onClick={run}
@@ -65,7 +65,7 @@ export function SearchLookupButton({
 
 			<button
 				type="button"
-				className="nav-link text-xs disabled:opacity-40"
+				className="nav-link min-h-11 inline-flex items-center text-xs disabled:opacity-40"
 				disabled={disabled}
 				aria-expanded={showEngines}
 				onClick={() => setShowEngines((current) => !current)}
@@ -74,15 +74,15 @@ export function SearchLookupButton({
 			</button>
 
 			{showEngines && (
-				<div className="flex flex-wrap items-center gap-2 rounded-md border border-line bg-surface/60 px-2 py-1">
+				<div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface min-h-11 px-2">
 					{SEARCH_ENGINES.map((entry) => (
 						<button
 							key={entry.id}
 							type="button"
 							className={
 								engine === entry.id
-									? "rounded-full border border-primary bg-primary/10 px-2 py-0.5 text-xs"
-									: "rounded-full border border-input px-2 py-0.5 text-xs"
+									? "min-h-11 rounded-sm border border-primary bg-primary/10 px-2 text-xs"
+									: "min-h-11 rounded-sm border border-border px-2 text-xs"
 							}
 							aria-pressed={engine === entry.id}
 							onClick={() => choose(entry.id)}

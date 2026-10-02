@@ -53,8 +53,8 @@ function DirectConnectBadge({ provider }: { readonly provider: ProviderId }) {
 		<span
 			className={
 				verified
-					? "rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-700 text-xs dark:text-emerald-300"
-					: "rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-amber-700 text-xs dark:text-amber-300"
+					? "rounded-sm border border-border bg-surface px-2 text-xs"
+					: "rounded-sm border border-border bg-surface px-2 text-xs "
 			}
 		>
 			{verified ? "已验证可直连" : "需自行测试"}
@@ -86,8 +86,11 @@ export function ConnectionForm({
 
 	const preset = presetFor(connection.provider);
 	const labelClass = "mt-1 block font-medium text-sm";
+	// `min-h-11` gives every text field a 44px touch target. Focus styling is left
+	// to the global `:focus-visible` ring: overriding it with a border colour
+	// change made focus depend on colour alone.
 	const inputClass =
-		"mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring";
+		"mt-1 min-h-11 w-full rounded-md border border-input bg-background px-3 text-sm";
 
 	/** Message for a refusal, so the user learns why nothing happened. */
 	function refusalMessage(refusal: TestRefusal): string {
@@ -152,7 +155,7 @@ export function ConnectionForm({
 	}
 
 	return (
-		<div className="island-shell rounded-xl p-5">
+		<div className="island-shell rounded-md p-5">
 			<div className="flex flex-wrap items-center gap-3">
 				<h3 className="font-semibold text-lg">{connection.name}</h3>
 				<DirectConnectBadge provider={connection.provider} />
@@ -243,7 +246,7 @@ export function ConnectionForm({
 						/>
 						<button
 							type="button"
-							className="mt-1 shrink-0 rounded-md border border-input px-3 py-2 text-sm"
+							className="mt-1 shrink-0 rounded-md border border-input min-h-11 px-3 text-sm"
 							onClick={() => setRevealKey((current) => !current)}
 						>
 							{revealKey ? "隐藏" : "显示"}
@@ -271,7 +274,7 @@ export function ConnectionForm({
 
 			<div className="mt-4 flex flex-wrap items-center gap-3">
 				<div className="flex gap-4 text-sm">
-					<label className="flex items-center gap-2">
+					<label className="flex min-h-11 items-center gap-2">
 						<input
 							type="checkbox"
 							id="capability-text"
@@ -288,7 +291,7 @@ export function ConnectionForm({
 						/>
 						文本
 					</label>
-					<label className="flex items-center gap-2">
+					<label className="flex min-h-11 items-center gap-2">
 						<input
 							type="checkbox"
 							id="capability-vision"
@@ -307,12 +310,12 @@ export function ConnectionForm({
 					</label>
 				</div>
 
-				<label className="flex items-center gap-2 text-sm">
+				<label className="flex min-h-11 items-center gap-2 text-sm">
 					档位
 					<select
 						id="connection-capabilities"
 						name="connection-capabilities"
-						className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+						className="min-h-11 rounded-md border border-input bg-background px-3 text-sm"
 						value={connection.tier ?? ""}
 						onChange={(event) => {
 							const value = event.target.value;
@@ -331,7 +334,7 @@ export function ConnectionForm({
 			<div className="mt-4">
 				<button
 					type="button"
-					className="rounded-md bg-primary px-4 py-2 text-primary-foreground text-sm disabled:opacity-50"
+					className="min-h-11 rounded-md bg-primary-strong px-4 text-primary-foreground text-sm disabled:opacity-50"
 					disabled={
 						testing ||
 						connection.endpoint.trim() === "" ||
@@ -351,8 +354,8 @@ export function ConnectionForm({
 				<div
 					className={
 						result.ok
-							? "mt-4 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm"
-							: "mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm"
+							? "mt-4 rounded-md border border-border bg-surface p-3 text-sm"
+							: "mt-4 rounded-md border border-border bg-surface p-3 text-sm"
 					}
 				>
 					{result.ok ? (

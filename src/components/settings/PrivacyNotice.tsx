@@ -35,7 +35,7 @@ export function PrivacyNotice({ open, onToggle }: PrivacyNoticeProps) {
 		<div className="mt-3">
 			<button
 				type="button"
-				className="nav-link text-sm"
+				className="nav-link min-h-11 inline-flex items-center text-sm"
 				aria-expanded={open}
 				onClick={onToggle}
 			>
@@ -43,7 +43,7 @@ export function PrivacyNotice({ open, onToggle }: PrivacyNoticeProps) {
 			</button>
 
 			{open && (
-				<div className="mt-2 rounded-md border border-line bg-surface/60 p-3 text-muted-foreground text-xs">
+				<div className="mt-2 rounded-md border border-border bg-surface p-3 text-muted-foreground text-xs">
 					<p className="font-medium text-foreground">采集什么</p>
 					<p className="mt-1">仅匿名使用统计，包含以下事件：</p>
 					<ul className="mt-1 list-disc space-y-0.5 pl-5">

@@ -55,7 +55,7 @@ export function UnconfiguredNotice() {
 	if (configured !== false) return null;
 
 	return (
-		<div className="island-shell mt-8 rounded-xl p-5">
+		<div className="island-shell mt-8 rounded-md p-5">
 			<p className="font-medium">还没有可用的模型连接</p>
 			<p className="mt-2 max-w-2xl text-muted-foreground text-sm">
 				翻译需要一个你自己的模型 Endpoint 与 API

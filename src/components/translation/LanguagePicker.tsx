@@ -133,7 +133,7 @@ export function LanguagePicker({
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-16"
+			className="fixed inset-0 z-50 flex items-start justify-center bg-foreground/40 p-4 pt-16"
 			role="dialog"
 			aria-modal="true"
 			aria-label="选择语言"
@@ -146,13 +146,13 @@ export function LanguagePicker({
 				if (event.key === "Escape") onClose();
 			}}
 		>
-			<div className="island-shell w-full max-w-md rounded-xl p-4">
+			<div className="island-shell w-full max-w-md rounded-md p-4">
 				<input
 					ref={searchRef}
 					id="language-search"
 					name="language-search"
 					aria-label="搜索语言"
-					className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring"
+					className="w-full rounded-md border border-input bg-background min-h-11 px-3 text-sm "
 					placeholder="搜索语言（中文名、英文名或代码）"
 					value={term}
 					onChange={(event) => {
@@ -183,7 +183,7 @@ export function LanguagePicker({
 										aria-selected={isSelected}
 										className={
 											isHighlighted
-												? "flex w-full items-center justify-between rounded-md bg-accent px-3 py-2 text-left text-sm"
+												? "flex w-full items-center justify-between rounded-md bg-surface px-3 py-2 text-left text-sm"
 												: "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm"
 										}
 										onMouseEnter={() => setHighlight(index)}
@@ -207,7 +207,11 @@ export function LanguagePicker({
 
 				<div className="mt-3 flex justify-between text-muted-foreground text-xs">
 					<span>↑↓ 移动 · Enter 选中 · Esc 关闭</span>
-					<button type="button" className="nav-link" onClick={onClose}>
+					<button
+						type="button"
+						className="nav-link min-h-11 inline-flex items-center"
+						onClick={onClose}
+					>
 						关闭
 					</button>
 				</div>

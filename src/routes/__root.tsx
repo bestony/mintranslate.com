@@ -110,7 +110,7 @@ function InsecureContextNotice() {
 	}
 
 	return (
-		<output className="block border-b border-amber-300/60 bg-amber-50 px-4 py-2 text-amber-900 text-sm dark:border-amber-500/40 dark:bg-amber-950/60 dark:text-amber-100">
+		<output className="block border-b border-border bg-surface px-4 py-2 text-foreground text-sm ">
 			当前环境不支持安装到桌面与离线能力，因为页面未通过 HTTPS 提供。请改用
 			HTTPS 访问以启用这些能力。
 		</output>

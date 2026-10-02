@@ -27,20 +27,24 @@ export function PwaStatus() {
 			{/* Offline notice: persistent while offline, since translation stays
 			    unavailable for as long as the state lasts. */}
 			{!pwa.online && (
-				<output className="block border-b border-line bg-surface/80 px-4 py-2 text-muted-foreground text-sm">
+				<output className="block border-b border-border bg-surface px-4 py-2 text-muted-foreground text-sm">
 					当前处于离线状态：可以浏览历史与修改设置，翻译需要网络或内网模型。
 				</output>
 			)}
 
 			{showUpdate && (
-				<div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface/80 px-4 py-2 text-sm">
+				<div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface px-4 py-2 text-sm">
 					<span>有新版本可用。</span>
-					<button type="button" className="nav-link" onClick={pwa.applyUpdate}>
+					<button
+						type="button"
+						className="nav-link min-h-11 inline-flex items-center"
+						onClick={pwa.applyUpdate}
+					>
 						更新
 					</button>
 					<button
 						type="button"
-						className="nav-link text-muted-foreground"
+						className="nav-link min-h-11 inline-flex items-center text-muted-foreground"
 						onClick={() => setDismissedUpdate(true)}
 					>
 						稍后
@@ -49,7 +53,7 @@ export function PwaStatus() {
 			)}
 
 			{pwa.upToDateNotice !== undefined && (
-				<output className="block border-b border-line px-4 py-1 text-muted-foreground text-xs">
+				<output className="block border-b border-border px-4 py-1 text-muted-foreground text-xs">
 					{pwa.upToDateNotice}
 				</output>
 			)}
@@ -71,7 +75,7 @@ export function InstallButton() {
 	return (
 		<button
 			type="button"
-			className="nav-link text-xs"
+			className="nav-link min-h-11 inline-flex items-center text-xs"
 			onClick={pwa.requestInstall}
 		>
 			安装到桌面

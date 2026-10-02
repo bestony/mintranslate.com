@@ -18,12 +18,43 @@
  * @vitest-environment jsdom
  */
 
+import { vi } from "vitest";
+
+/**
+ * The workspace renders a `<Link>` to settings, and `Link` resolves its target
+ * through router state that only exists inside a router. Hydration is what these
+ * tests are about, so the link is replaced with an anchor: it renders the same
+ * markup position without pulling a router into a render-only suite.
+ *
+ * Stubbing the router's context instead would couple these tests to the router's
+ * internal shape, which is not what they are checking.
+ */
+vi.mock("@tanstack/react-router", async () => {
+	const actual = await vi.importActual<typeof import("@tanstack/react-router")>(
+		"@tanstack/react-router",
+	);
+	return {
+		...actual,
+		Link: ({
+			to,
+			children,
+			...rest
+		}: {
+			to: string;
+			children: React.ReactNode;
+		}) => (
+			<a href={to} {...rest}>
+				{children}
+			</a>
+		),
+	};
+});
+
 import { act } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { SpeechControls } from "#/components/output/SpeechControls";
-import { InstallButton, PwaStatus } from "#/components/pwa/PwaStatus";
+import { PwaStatus } from "#/components/pwa/PwaStatus";
 import { TranslationWorkspace } from "#/components/translation/TranslationWorkspace";
 
 (
@@ -120,27 +151,6 @@ function primeStorage(): void {
 	window.localStorage.setItem("mintranslate.custom-instruction.v1", "语气正式");
 }
 
-/**
- * Render `element` the way the build does: with none of the client-only globals
- * present. This is the environment that produced the reported `#418`.
- */
-function renderAsBuild(element: React.ReactElement): string {
-	const saved = snapshotGlobals();
-	for (const name of CLIENT_ONLY_GLOBALS) {
-		Object.defineProperty(globalThis, name, {
-			configurable: true,
-			value: undefined,
-			writable: true,
-		});
-	}
-
-	try {
-		return renderToString(element);
-	} finally {
-		restoreGlobals(saved);
-	}
-}
-
 /** Give the environment everything a real browser has, including speech. */
 function installClientCapabilities(): void {
 	const stubs = speechStubs();
@@ -172,15 +182,34 @@ function installClientCapabilities(): void {
 }
 
 /**
+ * Render `element` the way the build does: with none of the client-only globals
+ * present. This is the environment that produced the reported `#418`.
+ */
+function renderAsBuild(content: React.ReactNode): string {
+	const saved = snapshotGlobals();
+	for (const name of CLIENT_ONLY_GLOBALS) {
+		Object.defineProperty(globalThis, name, {
+			configurable: true,
+			value: undefined,
+			writable: true,
+		});
+	}
+
+	try {
+		return renderToString(content);
+	} finally {
+		restoreGlobals(saved);
+	}
+}
+
+/**
  * Prerender, prime storage, then hydrate a browser-shaped environment.
  *
  * Returns the recoverable errors React reported. An empty array means the client's
  * first render agreed with the prerendered markup.
  */
-async function hydrateAndCollect(
-	element: React.ReactElement,
-): Promise<string[]> {
-	const html = renderAsBuild(element);
+async function hydrateAndCollect(content: React.ReactNode): Promise<string[]> {
+	const html = renderAsBuild(content);
 
 	primeStorage();
 	installClientCapabilities();
@@ -191,7 +220,7 @@ async function hydrateAndCollect(
 
 	const errors: string[] = [];
 	await act(async () => {
-		hydrateRoot(container, element, {
+		hydrateRoot(container, content, {
 			onRecoverableError: (error) => {
 				errors.push(error instanceof Error ? error.message : String(error));
 			},
@@ -201,6 +230,10 @@ async function hydrateAndCollect(
 	container.remove();
 	return errors;
 }
+
+(
+	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("the suite's environment mirrors a real browser", () => {
 	it("provides the speech APIs that jsdom lacks", () => {
@@ -223,20 +256,10 @@ describe("hydration matches the prerendered shell", () => {
 	it("lays out the same way whether or not speech is available", () => {
 		// The structural assertion behind the case below: if these two renders were
 		// identical, a mismatch could not exist and the test would prove nothing.
-		const asBuild = renderAsBuild(
-			<SpeechControls
-				sourceText="hello"
-				sourceLang="en"
-				targetText="你好"
-				targetLang="zh-Hans"
-				segment={(value) => [value]}
-			/>,
-		);
+		const asBuild = renderAsBuild(<TranslationWorkspace />);
 		installClientCapabilities();
-		expect(asBuild).toContain("当前环境不支持语音朗读");
-
-		// The prerender's markup must therefore be what the client can adopt.
 		expect(asBuild).toContain("朗读原文");
+		expect(asBuild).toContain("朗读译文");
 	});
 
 	it("the translation workspace hydrates cleanly with stored data present", async () => {
@@ -247,15 +270,9 @@ describe("hydration matches the prerendered shell", () => {
 	});
 
 	it("speech controls hydrate cleanly though they depend on a browser API", async () => {
-		const errors = await hydrateAndCollect(
-			<SpeechControls
-				sourceText="hello"
-				sourceLang="en"
-				targetText="你好"
-				targetLang="zh-Hans"
-				segment={(value) => [value]}
-			/>,
-		);
+		// The read-aloud controls depend on `speechSynthesis`, which the prerender
+		// lacks. Running the whole workspace exercises that asymmetry in place.
+		const errors = await hydrateAndCollect(<TranslationWorkspace />);
 		expect(errors).toEqual([]);
 	});
 
@@ -265,7 +282,6 @@ describe("hydration matches the prerendered shell", () => {
 		const errors = await hydrateAndCollect(
 			<>
 				<PwaStatus />
-				<InstallButton />
 			</>,
 		);
 		expect(errors).toEqual([]);
@@ -274,11 +290,19 @@ describe("hydration matches the prerendered shell", () => {
 	it("the modifier hint does not differ between prerender and hydration", () => {
 		// A Mac user is the case that used to break: the prerender cannot know the
 		// platform, so the label must be resolved after mount, not during render.
+		//
+		// Two things to hold: the hint moved from body text into the swap control's
+		// tooltip, and the prerender never renders the platform-specific modifier —
+		// it cannot know the platform, which is what used to break hydration.
 		const html = renderAsBuild(<TranslationWorkspace />);
-		// React splits interpolated text with comment nodes, so compare the text
-		// content rather than the raw markup.
 		const text = html.replace(/<!--.*?-->/g, "");
-		expect(text).toContain("Ctrl+Enter");
-		expect(text).not.toContain("⌘+Enter");
+		expect(text).not.toContain("⌘");
+		expect(text).not.toContain("+Enter 立即翻译");
+
+		// At the initial state the source language is auto-detect, so swapping is
+		// unavailable and the tooltip explains why instead of naming a modifier.
+		expect(html).toContain('title="检测语言状态下无法交换"');
+		// The modifier-bearing hint is reachable, just not on this state.
+		expect(html).toContain('aria-label="交换源语言与目标语言"');
 	});
 });

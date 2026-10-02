@@ -14,6 +14,7 @@
  * network path is `model-caller`.
  */
 
+import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	createAnalytics,
@@ -65,8 +66,11 @@ import { fromQueryString, writeWorkspaceUrl } from "#/lib/url-state";
 import { FeedbackPanel } from "../output/FeedbackPanel";
 import { SearchLookupButton } from "../output/SearchLookupButton";
 import { ShareMenu } from "../output/ShareMenu";
-import { SpeechControls } from "../output/SpeechControls";
-import { InstallButton } from "../pwa/PwaStatus";
+import {
+	SpeechButton,
+	SpeechRateControl,
+	useSpeech,
+} from "../output/SpeechControls";
 import { LanguagePicker, languageChipLabel } from "./LanguagePicker";
 
 /**
@@ -631,6 +635,13 @@ export function TranslationWorkspace() {
 		[],
 	);
 
+	/**
+	 * Speech is owned here, not inside the buttons: the browser plays one
+	 * utterance at a time, so a single controller is what makes "read source" stop
+	 * "read target". The buttons below only render it.
+	 */
+	const speech = useSpeech(segmentForSpeech);
+
 	// Each row excludes its own current value: the label button above it already
 	// shows that language, and offering it again reads as a duplicate entry.
 	const sourceChips = quickLanguages(store.languageUsage, [
@@ -650,68 +661,44 @@ export function TranslationWorkspace() {
 			    absorb the leftover height, opening a large empty band between the
 			    toolbar and the language rows. `content-start` packs the rows at their
 			    natural height and leaves the slack at the bottom. */}
-			<div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:grid md:content-start md:grid-cols-2 md:gap-6 md:p-6">
-				<div className="md:col-span-2">
-					{/* Mobile turns this row into labeled tabs; on desktop it is a toolbar. */}
-					<div className="flex flex-wrap items-center gap-2 border-line border-b pb-3">
+			<div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:grid md:grid-cols-[1fr_auto_1fr] md:content-start md:gap-x-6 md:gap-y-4 md:p-6">
+				<div className="md:col-span-3">
+					{/* The toolbar carries only what the workspace needs at a glance.
+					    Shortcut hints moved to the footer and a tooltip, and the install
+					    entry moved to the header, so this row stays about the task. */}
+					<div className="flex flex-wrap items-center gap-2 border-b border-border pb-3">
 						<button
 							type="button"
-							className="rounded-full border border-primary bg-primary px-3 py-1 text-primary-foreground text-xs"
+							className="min-h-11 rounded-sm bg-primary-strong px-4 text-primary-foreground text-xs"
 						>
 							文本翻译
 						</button>
-						<span className="text-muted-foreground text-xs">
-							{active ? `使用中：${active.name}` : "未配置连接"}
-						</span>
-						<span className="ml-auto flex items-center gap-3 text-muted-foreground text-xs">
-							{/* Present only when the browser can actually prompt, so it is
-							    never a button that does nothing. */}
-							<InstallButton />
-							{modifier}+Enter 立即翻译 · {modifier}+Shift+S 交换语言
-						</span>
-					</div>
-
-					{/* Output actions act on the translation that was just produced, so they
-					    sit directly under the toolbar rather than in a side menu.
-					    `self-start` is load-bearing: this block is a grid item, and a grid
-					    item stretches to its row's height by default. The row is as tall as
-					    the source column, so without it the block reserves several hundred
-					    pixels of empty space below the (short) speech row. */}
-					<div className="mt-3 flex flex-col gap-2 self-start">
-						<SpeechControls
-							sourceText={text}
-							sourceLang={sourceLang}
-							targetText={output}
-							targetLang={targetLang}
-							segment={segmentForSpeech}
-						/>
-						{output !== "" && (
-							<>
-								<ShareMenu
-									sourceLang={sourceLang}
-									targetLang={targetLang}
-									sourceText={text}
-									targetText={output}
-								/>
-								<SearchLookupButton targetText={output} />
-								<FeedbackPanel
-									key={output}
-									sourceText={text}
-									targetText={output}
-									sourceLang={sourceLang}
-									targetLang={targetLang}
-								/>
-							</>
+						{/* One control, two states: an actionable link when nothing is
+						    configured, and a plain label once a connection is active. */}
+						{active ? (
+							<span className="text-muted-foreground text-xs">
+								使用中：{active.name}
+							</span>
+						) : (
+							<Link
+								to="/settings"
+								className="nav-link min-h-11 inline-flex items-center gap-1 text-xs underline"
+							>
+								未配置连接 — 去设置
+							</Link>
 						)}
 					</div>
 				</div>
 
 				{/* Source column */}
 				<section className="flex min-h-0 flex-col">
+					{/* One row per side: the selected language, then the quick entries, then
+					    the "more" entry. Identical structure on both sides keeps the rows
+					    aligned; the swap control lives between the columns, not here. */}
 					<div className="flex flex-wrap items-center gap-2">
 						<button
 							type="button"
-							className="rounded-full border border-input px-3 py-1 text-xs"
+							className="min-h-11 rounded-sm border border-border px-3 text-xs"
 							onClick={() => setPicker("source")}
 						>
 							{languageChipLabel(
@@ -726,8 +713,8 @@ export function TranslationWorkspace() {
 								aria-pressed={sourceLang === code}
 								className={
 									sourceLang === code
-										? "rounded-full border border-primary bg-primary/10 px-3 py-1 text-xs"
-										: "rounded-full border border-input px-3 py-1 text-xs"
+										? "min-h-11 rounded-sm border border-primary bg-primary/10 px-3 text-xs"
+										: "min-h-11 rounded-sm border border-border px-3 text-xs"
 								}
 								onClick={() => {
 									setSourceLang(code);
@@ -739,14 +726,10 @@ export function TranslationWorkspace() {
 						))}
 						<button
 							type="button"
-							className="rounded-full border border-input px-3 py-1 text-xs disabled:opacity-40"
-							disabled={!canSwap(sourceLang)}
-							title={
-								canSwap(sourceLang) ? "交换语言" : "检测语言状态下无法交换"
-							}
-							onClick={swap}
+							className="min-h-11 rounded-sm border border-border px-3 text-xs"
+							onClick={() => setPicker("source")}
 						>
-							⇄ 交换
+							更多 ▾
 						</button>
 					</div>
 
@@ -755,7 +738,7 @@ export function TranslationWorkspace() {
 						id="translation-source"
 						name="source-text"
 						aria-label="要翻译的文本"
-						className="mt-3 min-h-40 flex-1 resize-none rounded-xl border border-input bg-background p-4 text-base outline-none focus-visible:border-ring md:min-h-64"
+						className="mt-3 min-h-60 flex-1 resize-none rounded-md border border-input bg-background p-4 text-body md:max-h-[calc(100dvh-22rem)] md:min-h-60"
 						placeholder="输入要翻译的文本"
 						value={text}
 						onChange={(event) => {
@@ -774,44 +757,77 @@ export function TranslationWorkspace() {
 						}}
 					/>
 
-					<div className="mt-2 flex items-center justify-between text-xs">
+					{/* This panel's own toolbar: reading aloud belongs to the text it
+					    reads, so it sits here rather than in a row shared by both sides.
+					    The counter stays on the left, actions on the right. */}
+					<div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
 						<span
 							className={
-								state === "normal" ? "text-muted-foreground" : "text-amber-600"
+								state === "normal" ? "text-muted-foreground" : "text-foreground"
 							}
 						>
 							{state === "at-limit"
 								? "已达到 5000 字符上限"
 								: counterLabel(characters)}
 						</span>
-						{text !== "" && (
-							<button
-								type="button"
-								className="nav-link"
-								onClick={() => {
-									// Clearing also abandons in-flight work and resets the
-									// dedupe key, so the same text can be retyped.
-									controller.cancel();
-									setText("");
-									setOutput("");
-									setFailure(undefined);
-									setNotice(undefined);
-									setDetected(undefined);
-									textareaRef.current?.focus();
-								}}
-							>
-								清除原文
-							</button>
-						)}
+						<div className="flex flex-wrap items-center gap-2">
+							<SpeechButton
+								side="source"
+								label="朗读原文"
+								binding={speech}
+								text={text}
+								lang={sourceLang}
+							/>
+							<SpeechRateControl binding={speech} lang={targetLang} />
+							{text !== "" && (
+								<button
+									type="button"
+									className="nav-link min-h-11 text-xs"
+									onClick={() => {
+										// Clearing also abandons in-flight work and resets the
+										// dedupe key, so the same text can be retyped.
+										controller.cancel();
+										setText("");
+										setOutput("");
+										setFailure(undefined);
+										setNotice(undefined);
+										setDetected(undefined);
+										textareaRef.current?.focus();
+									}}
+								>
+									清除原文
+								</button>
+							)}
+						</div>
 					</div>
 				</section>
+
+				{/* The swap axis: a narrow column between the two panes, so the control
+				    sits on the midline the two columns share. Desktop only — below the
+				    breakpoint the two columns stack and a midline has no meaning. */}
+				<div className="hidden md:flex md:flex-col md:items-center md:justify-center">
+					<button
+						type="button"
+						className="min-h-11 min-w-11 rounded-sm border border-border px-2 text-xs disabled:opacity-40"
+						disabled={!canSwap(sourceLang)}
+						title={
+							canSwap(sourceLang)
+								? `交换语言（${modifier}+Shift+S）`
+								: "检测语言状态下无法交换"
+						}
+						aria-label="交换源语言与目标语言"
+						onClick={swap}
+					>
+						⇄
+					</button>
+				</div>
 
 				{/* Target column */}
 				<section className="flex min-h-0 flex-col">
 					<div className="flex flex-wrap items-center gap-2">
 						<button
 							type="button"
-							className="rounded-full border border-input px-3 py-1 text-xs"
+							className="min-h-11 rounded-sm border border-border px-3 text-xs"
 							onClick={() => setPicker("target")}
 						>
 							{languageChipLabel(targetLang, false)}
@@ -823,8 +839,8 @@ export function TranslationWorkspace() {
 								aria-pressed={targetLang === code}
 								className={
 									targetLang === code
-										? "rounded-full border border-primary bg-primary/10 px-3 py-1 text-xs"
-										: "rounded-full border border-input px-3 py-1 text-xs"
+										? "min-h-11 rounded-sm border border-primary bg-primary/10 px-3 text-xs"
+										: "min-h-11 rounded-sm border border-border px-3 text-xs"
 								}
 								onClick={() => {
 									const resolved = resolveTargetConflict(
@@ -839,40 +855,22 @@ export function TranslationWorkspace() {
 								{languageName(code)}
 							</button>
 						))}
-						{output !== "" && (
-							<div className="ml-auto flex items-center gap-3">
-								<button
-									type="button"
-									className="nav-link text-xs disabled:opacity-40"
-									aria-pressed={saved}
-									disabled={lastRecordId === undefined}
-									title={
-										lastRecordId === undefined
-											? "本次译文尚未写入历史"
-											: undefined
-									}
-									onClick={() => void toggleSaved()}
-								>
-									{saved ? "已保存" : "保存翻译"}
-								</button>
-								<button
-									type="button"
-									className="nav-link text-xs"
-									onClick={copy}
-								>
-									{copied ? "译文已复制" : "复制译文"}
-								</button>
-							</div>
-						)}
+						<button
+							type="button"
+							className="min-h-11 rounded-sm border border-border px-3 text-xs"
+							onClick={() => setPicker("target")}
+						>
+							更多 ▾
+						</button>
 					</div>
 
-					<div className="mt-3 min-h-40 flex-1 overflow-y-auto rounded-xl border border-line bg-surface/60 p-4 md:min-h-64">
+					<div className="mt-3 min-h-60 flex-1 overflow-y-auto rounded-md border border-border bg-surface p-4 md:max-h-[calc(100dvh-22rem)] md:min-h-60">
 						{pending && output === "" && (
 							<p className="text-muted-foreground text-sm">翻译中…</p>
 						)}
 
 						{failure !== undefined && (
-							<div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
+							<div className="rounded-md border border-border bg-surface p-3 text-sm">
 								<p>{failure}</p>
 								<button
 									type="button"
@@ -889,7 +887,7 @@ export function TranslationWorkspace() {
 								{segments.map((segment) => (
 									<li
 										key={segment.index}
-										className="rounded-md px-2 py-1 hover:bg-accent/60"
+										className="rounded-sm min-h-11 px-2 hover:bg-surface"
 									>
 										{segment.text}
 									</li>
@@ -903,11 +901,67 @@ export function TranslationWorkspace() {
 							</p>
 						)}
 					</div>
+
+					{/* This panel's toolbar: everything that acts on the translation sits
+					    with it — read aloud first, then the output actions. Grouping them
+					    here is what removed the full-width row that used to separate the
+					    panels from their own controls. */}
+					<div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+						<SpeechButton
+							side="target"
+							label="朗读译文"
+							binding={speech}
+							text={output}
+							lang={targetLang}
+						/>
+						{output !== "" && (
+							<>
+								<button
+									type="button"
+									className="nav-link min-h-11 text-xs"
+									onClick={copy}
+								>
+									{copied ? "译文已复制" : "复制译文"}
+								</button>
+								<button
+									type="button"
+									className="nav-link min-h-11 text-xs disabled:opacity-40"
+									aria-pressed={saved}
+									disabled={lastRecordId === undefined}
+									title={
+										lastRecordId === undefined
+											? "本次译文尚未写入历史"
+											: undefined
+									}
+									onClick={() => void toggleSaved()}
+								>
+									{saved ? "已保存" : "保存翻译"}
+								</button>
+								<ShareMenu
+									sourceLang={sourceLang}
+									targetLang={targetLang}
+									sourceText={text}
+									targetText={output}
+								/>
+								<SearchLookupButton targetText={output} />
+							</>
+						)}
+					</div>
+
+					{output !== "" && (
+						<FeedbackPanel
+							key={output}
+							sourceText={text}
+							targetText={output}
+							sourceLang={sourceLang}
+							targetLang={targetLang}
+						/>
+					)}
 				</section>
 			</div>
 
 			{notice !== undefined && (
-				<p className="mx-auto w-full max-w-6xl px-4 pb-4 text-xs text-amber-600 md:px-6">
+				<p className="mx-auto w-full max-w-6xl px-4 pb-4 text-muted-foreground text-xs md:px-6">
 					{notice}
 				</p>
 			)}
