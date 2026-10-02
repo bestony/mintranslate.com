@@ -166,7 +166,13 @@ export function createAnalyticsLoader(deps: LoaderDeps = {}): AnalyticsLoader {
 		// Without a URL this build has no identifier, so there is nothing to load.
 		if (scriptUrl === undefined) return false;
 
-		if (dom.hasScript(scriptUrl)) {
+		// The vendor's snippet appends the identifier as a query parameter
+		// (`gtag/js?id=G-XXXX`), so the script is configured by its own tag.
+		// The same URL is used for the duplicate check below: checking the bare URL
+		// while injecting the tagged one would let a second call add a second tag.
+		const tagUrl = `${scriptUrl}?id=${encodeURIComponent(resolved.measurementId)}`;
+
+		if (dom.hasScript(tagUrl)) {
 			injected = true;
 			return true;
 		}
@@ -196,7 +202,7 @@ export function createAnalyticsLoader(deps: LoaderDeps = {}): AnalyticsLoader {
 			},
 		);
 
-		dom.injectScript(scriptUrl, scriptId);
+		dom.injectScript(tagUrl, scriptId);
 		injected = true;
 		return true;
 	}

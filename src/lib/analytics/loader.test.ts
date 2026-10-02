@@ -3,6 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { ANALYTICS_ENABLED_KEY, MEASUREMENT_ID_KEY } from "./config";
 
 const SCRIPT_URL = "https://example.test/gtag.js";
+/**
+ * What the DOM ends up with: the vendor's snippet appends the identifier to the
+ * script URL, so the injected tag carries it.
+ */
+const TAGGED_SCRIPT_URL = `${SCRIPT_URL}?id=G-TEST123`;
 
 import {
 	type AnalyticsDom,
@@ -121,7 +126,7 @@ describe("startup states", () => {
 
 		const outcome = loader.init();
 		expect(outcome.loaded).toBe(true);
-		expect(fakeDom.injected).toEqual([SCRIPT_URL]);
+		expect(fakeDom.injected).toEqual([TAGGED_SCRIPT_URL]);
 	});
 
 	it("configures the vendor global before injecting", () => {
@@ -223,7 +228,7 @@ describe("runtime toggle states", () => {
 
 		loader.enable();
 		expect(loader.statisticsEnabled()).toBe(true);
-		expect(fakeDom.injected).toEqual([SCRIPT_URL]);
+		expect(fakeDom.injected).toEqual([TAGGED_SCRIPT_URL]);
 	});
 
 	it("persists the toggle in both directions", () => {
