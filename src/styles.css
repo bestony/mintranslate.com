@@ -1,6 +1,12 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Manrope:wght@400;500;600;700;800&display=swap');
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
+
+/* Self-hosted fonts. These packages ship the woff2 files and the @font-face
+   declarations, so the build has no external font dependency. Fraunces is
+   imported through `opsz.css` because that variant carries both the `opsz`
+   and `wght` axes the interface uses. */
+@import '@fontsource-variable/manrope';
+@import '@fontsource-variable/fraunces/opsz.css';
 
 @import 'tw-animate-css';
 
@@ -118,7 +124,8 @@
 }
 
 @theme inline {
-  --font-sans: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Manrope Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -246,7 +253,7 @@ pre code {
 }
 
 .display-title {
-  font-family: 'Fraunces', Georgia, serif;
+  font-family: var(--font-display);
 }
 
 .island-shell {

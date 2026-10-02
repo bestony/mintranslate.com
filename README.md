@@ -1,4 +1,9 @@
-Welcome to your new TanStack Start app!
+# MinTranslate
+
+A self-hosted AI translation workbench. Bring your own model endpoint; text,
+images, documents and webpages stay under your control.
+
+Requirement baseline: [`docs/prd.md`](docs/prd.md).
 
 # Getting Started
 
@@ -11,11 +16,31 @@ pnpm dev
 
 # Building For Production
 
-To build this application for production:
-
 ```bash
 pnpm build
 ```
+
+This produces the static deployable output in `dist/`. The build also runs a
+self-check that fails if the output references any external origin, which is
+what keeps the application loadable with no external network access.
+
+To serve the built output locally the way a static host would:
+
+```bash
+node scripts/serve-static.mjs --dir dist --base /
+```
+
+See [`docs/deployment.md`](docs/deployment.md) for the HTTPS requirement, the
+required routing rules, sub-path deployment, and intranet setup.
+
+## Architecture
+
+- **Build**: TanStack Start in SPA mode. The output is static assets only — no
+  application backend, no server functions, no runtime API.
+- **Model access**: the browser calls the endpoint the user configures. There is
+  no server that holds a key or proxies a request.
+- **Data**: history and settings live in the browser. There is no account system
+  and no cloud sync.
 
 ## Styling
 
@@ -30,7 +55,7 @@ If you prefer not to use Tailwind CSS:
 3. Remove `tailwindcss()` from the plugins array in `vite.config.ts`
 4. Remove `@tailwindcss/vite` and `tailwindcss` from `package.json`
 
-## Linting & Formatting
+## Linting, Formatting & Type Checking
 
 This project uses [Biome](https://biomejs.dev/) for linting and formatting. The following scripts are available:
 
@@ -39,61 +64,29 @@ This project uses [Biome](https://biomejs.dev/) for linting and formatting. The 
 pnpm lint
 pnpm format
 pnpm check
+pnpm typecheck
 ```
 
 
-## Deploy to Vercel
+## Deploy
 
-1. Push this repo to GitHub, GitLab, or Bitbucket
-2. In Vercel, choose **Add New > Project** and import the repo
-3. Keep the detected TanStack Start framework settings
-4. Add production values from `.env.example` under **Settings > Environment Variables**
-5. Deploy
+The output is a directory of static files with no server runtime. Publish
+`dist/` to any static host, CDN or intranet web server, and configure it to
+return `_shell.html` for unmatched paths so deep links and refreshes work.
 
-Vercel runs the build script and deploys Nitro's output as Vercel Functions and
-static assets. The included `vercel.json` makes framework detection explicit.
+[`docs/deployment.md`](docs/deployment.md) covers this in full, including the
+Nginx, Apache, Netlify, Cloudflare Pages, GitHub Pages and Vercel rules and the
+required `vercel.json`. The included `vercel.json` uses `outputDirectory: dist`
+with a rewrite to `_shell.html`.
 
-Variables prefixed with `VITE_` are included in the browser bundle. Keep secrets
-unprefixed so they remain server-only.
+Variables prefixed with `VITE_` are embedded in the browser bundle and are
+readable by anyone who loads the application. Never put a secret in one.
 
 
-# TanStack Chat Application
+# TanStack Start Reference
 
-Am example chat application built with TanStack Start, TanStack Store, and Claude AI.
-
-## .env Updates
-
-```env
-ANTHROPIC_API_KEY=your_anthropic_api_key
-```
-
-## ✨ Features
-
-### AI Capabilities
-- 🤖 Powered by Claude 3.5 Sonnet 
-- 📝 Rich markdown formatting with syntax highlighting
-- 🎯 Customizable system prompts for tailored AI behavior
-- 🔄 Real-time message updates and streaming responses (coming soon)
-
-### User Experience
-- 🎨 Modern UI with Tailwind CSS and Lucide icons
-- 🔍 Conversation management and history
-- 🔐 Secure API key management
-- 📋 Markdown rendering with code highlighting
-
-### Technical Features
-- 📦 Centralized state management with TanStack Store
-- 🔌 Extensible architecture for multiple AI providers
-- 🛠️ TypeScript for type safety
-
-## Architecture
-
-### Tech Stack
-- **Frontend Framework**: TanStack Start
-- **Routing**: TanStack Router
-- **State Management**: TanStack Store
-- **Styling**: Tailwind CSS
-- **AI Integration**: Anthropic's Claude API
+The remaining sections document the framework scaffolding this project is built
+on. They describe TanStack Start, Router, Store and Data Fetching in general.
 
 ## Shadcn
 
@@ -178,6 +171,10 @@ More information on layouts can be found in the [Layouts documentation](https://
 
 TanStack Start provides server functions that allow you to write server-side code that seamlessly integrates with your client components.
 
+> **Not available in this project.** MinTranslate builds in SPA mode and
+> deploys as static assets only, so there is no server runtime to execute a
+> server function. The section below is kept as framework reference.
+
 ```tsx
 import { createServerFn } from '@tanstack/react-start'
 
@@ -202,6 +199,9 @@ function MyComponent() {
 ## API Routes
 
 You can create API routes by using the `server` property in your route definitions:
+
+> **Not available in this project.** Same reason as above: no server runtime is
+> deployed.
 
 ```tsx
 import { createFileRoute } from '@tanstack/react-router'

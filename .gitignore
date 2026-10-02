@@ -11,3 +11,6 @@ dist-ssr
 .vinxi
 __unconfig*
 todos.json
+
+# Static assets (override global "Public/" ignore on case-insensitive FS)
+!/public/

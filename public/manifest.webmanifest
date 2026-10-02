@@ -1,0 +1,33 @@
+{
+  "name": "MinTranslate",
+  "short_name": "MinTranslate",
+  "description": "A self-hosted AI translation workbench. Bring your own model endpoint; text, images, documents and webpages stay under your control.",
+  "lang": "zh-CN",
+  "dir": "auto",
+  "start_url": "./?op=translate",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#2f6a4a",
+  "background_color": "#e7f3ec",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

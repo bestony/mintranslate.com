@@ -1,5 +1,8 @@
 allowBuilds:
-  '@google/genai': set this to true or false
+  # Postinstall scripts stay disabled: neither package needs them at runtime here.
+  # Protobufjs would only generate protobuf descriptors, which the published
+  # ES module builds already ship.
+  '@google/genai': false
   esbuild: true
   lightningcss: true
-  protobufjs: set this to true or false
+  protobufjs: false
