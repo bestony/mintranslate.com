@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as GlossaryRouteImport } from './routes/glossary'
 import { Route as HistoryRouteImport } from './routes/history'
+import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as SettingsRouteImport } from './routes/settings'
 
 const IndexRoute = IndexRouteImport.update({
@@ -29,6 +30,11 @@ const HistoryRoute = HistoryRouteImport.update({
   path: '/history',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MemoryRoute = MemoryRouteImport.update({
+  id: '/memory',
+  path: '/memory',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -39,12 +45,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/glossary': typeof GlossaryRoute
   '/history': typeof HistoryRoute
+  '/memory': typeof MemoryRoute
   '/settings': typeof SettingsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/glossary': typeof GlossaryRoute
   '/history': typeof HistoryRoute
+  '/memory': typeof MemoryRoute
   '/settings': typeof SettingsRoute
 }
 export interface FileRoutesById {
@@ -52,20 +60,22 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/glossary': typeof GlossaryRoute
   '/history': typeof HistoryRoute
+  '/memory': typeof MemoryRoute
   '/settings': typeof SettingsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/glossary' | '/history' | '/settings'
+  fullPaths: '/' | '/glossary' | '/history' | '/memory' | '/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/glossary' | '/history' | '/settings'
-  id: '__root__' | '/' | '/glossary' | '/history' | '/settings'
+  to: '/' | '/glossary' | '/history' | '/memory' | '/settings'
+  id: '__root__' | '/' | '/glossary' | '/history' | '/memory' | '/settings'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   GlossaryRoute: typeof GlossaryRoute
   HistoryRoute: typeof HistoryRoute
+  MemoryRoute: typeof MemoryRoute
   SettingsRoute: typeof SettingsRoute
 }
 
@@ -92,6 +102,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/memory': {
+      id: '/memory'
+      path: '/memory'
+      fullPath: '/memory'
+      preLoaderRoute: typeof MemoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -106,6 +123,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   GlossaryRoute: GlossaryRoute,
   HistoryRoute: HistoryRoute,
+  MemoryRoute: MemoryRoute,
   SettingsRoute: SettingsRoute,
 }
 export const routeTree = rootRouteImport

@@ -17,6 +17,7 @@ const NAV = [
 	{ to: "/", label: "翻译" },
 	{ to: "/history", label: "历史" },
 	{ to: "/glossary", label: "术语表" },
+	{ to: "/memory", label: "翻译记忆" },
 	{ to: "/settings", label: "设置" },
 ] as const;
 
