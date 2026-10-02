@@ -14,3 +14,6 @@ todos.json
 
 # Static assets (override global "Public/" ignore on case-insensitive FS)
 !/public/
+.vercel
+.env*
+!.env.example
