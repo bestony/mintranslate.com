@@ -183,12 +183,13 @@ export function createBrowserInstallEnvironment(
  * Only used to choose which instructions to show, never to decide what the
  * browser can do.
  */
-export function detectPlatform(
-	userAgent: string = typeof navigator === "undefined"
-		? ""
-		: navigator.userAgent,
-): Platform {
-	const ua = userAgent.toLowerCase();
+export function detectPlatform(userAgent?: string): Platform {
+	// Read defensively: `navigator.userAgent` is absent in some embedded
+	// webviews, and an explicit `undefined` argument must not throw either.
+	const resolved =
+		userAgent ??
+		(typeof navigator === "undefined" ? "" : (navigator.userAgent ?? ""));
+	const ua = resolved.toLowerCase();
 
 	// iPadOS reports a desktop UA, so a touch-capable "Macintosh" is an iPad.
 	const isIpadOs =

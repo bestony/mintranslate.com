@@ -69,12 +69,27 @@ import { SpeechControls } from "../output/SpeechControls";
 import { InstallButton } from "../pwa/PwaStatus";
 import { LanguagePicker, languageChipLabel } from "./LanguagePicker";
 
-/** How the modifier key is shown for the current platform. */
-function modifierLabel(): string {
-	if (typeof navigator === "undefined") return "Ctrl";
-	return /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
-		? "⌘"
-		: "Ctrl";
+/**
+ * How the modifier key is shown for the current platform.
+ *
+ * Deliberately returns the non-Mac label until the platform is read after mount.
+ * Reading `navigator` during render makes the server's prerendered text ("Ctrl",
+ * because the prerender has no `navigator`) differ from the first client render
+ * ("⌘" on a Mac), which React reports as a hydration mismatch and then discards
+ * the whole prerendered tree for.
+ */
+function useModifierLabel(): string {
+	const [label, setLabel] = useState("Ctrl");
+
+	useEffect(() => {
+		setLabel(
+			/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+				? "⌘"
+				: "Ctrl",
+		);
+	}, []);
+
+	return label;
 }
 
 /** One connection's limiter set, shared across the component's lifetime. */
@@ -82,6 +97,7 @@ const limiters = createKeyedLimiters(2);
 
 export function TranslationWorkspace() {
 	const store = useConnectionStore();
+	const modifier = useModifierLabel();
 	const [sourceLang, setSourceLang] = useState(AUTO_DETECT);
 	const [targetLang, setTargetLang] = useState<string>(DEFAULT_TARGET);
 	const [text, setText] = useState("");
@@ -497,7 +513,6 @@ export function TranslationWorkspace() {
 	const characters = countCharacters(text);
 	const state = counterState(characters);
 	const segments = useMemo(() => segmentTranslation(output), [output]);
-	const modifier = useMemo(modifierLabel, []);
 
 	const swap = useCallback(() => {
 		if (!canSwap(sourceLang)) return;
@@ -616,13 +631,26 @@ export function TranslationWorkspace() {
 		[],
 	);
 
-	const sourceChips = quickLanguages(store.languageUsage, [targetLang]);
-	const targetChips = quickLanguages(store.languageUsage, [sourceLang]);
+	// Each row excludes its own current value: the label button above it already
+	// shows that language, and offering it again reads as a duplicate entry.
+	const sourceChips = quickLanguages(store.languageUsage, [
+		sourceLang,
+		targetLang,
+	]);
+	const targetChips = quickLanguages(store.languageUsage, [
+		targetLang,
+		sourceLang,
+	]);
 
 	return (
 		<div className="flex min-h-screen flex-col">
-			{/* Layout: single column on mobile, wider two-column grid from md up. */}
-			<div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:grid md:grid-cols-2 md:gap-6 md:p-6">
+			{/* Layout: single column on mobile, wider two-column grid from md up.
+			    `md:content-start` matters: the container is `flex-1`, so in grid mode it
+			    is taller than its content and the rows would otherwise be stretched to
+			    absorb the leftover height, opening a large empty band between the
+			    toolbar and the language rows. `content-start` packs the rows at their
+			    natural height and leaves the slack at the bottom. */}
+			<div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:grid md:content-start md:grid-cols-2 md:gap-6 md:p-6">
 				<div className="md:col-span-2">
 					{/* Mobile turns this row into labeled tabs; on desktop it is a toolbar. */}
 					<div className="flex flex-wrap items-center gap-2 border-line border-b pb-3">
@@ -644,8 +672,12 @@ export function TranslationWorkspace() {
 					</div>
 
 					{/* Output actions act on the translation that was just produced, so they
-					    sit directly under the toolbar rather than in a side menu. */}
-					<div className="mt-3 flex flex-col gap-2">
+					    sit directly under the toolbar rather than in a side menu.
+					    `self-start` is load-bearing: this block is a grid item, and a grid
+					    item stretches to its row's height by default. The row is as tall as
+					    the source column, so without it the block reserves several hundred
+					    pixels of empty space below the (short) speech row. */}
+					<div className="mt-3 flex flex-col gap-2 self-start">
 						<SpeechControls
 							sourceText={text}
 							sourceLang={sourceLang}
@@ -720,6 +752,9 @@ export function TranslationWorkspace() {
 
 					<textarea
 						ref={textareaRef}
+						id="translation-source"
+						name="source-text"
+						aria-label="要翻译的文本"
 						className="mt-3 min-h-40 flex-1 resize-none rounded-xl border border-input bg-background p-4 text-base outline-none focus-visible:border-ring md:min-h-64"
 						placeholder="输入要翻译的文本"
 						value={text}

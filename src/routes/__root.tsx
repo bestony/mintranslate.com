@@ -3,11 +3,13 @@ import {
 	createRootRouteWithContext,
 	HeadContent,
 	Scripts,
+	useRouterState,
 } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { PwaStatus } from "#/components/pwa/PwaStatus";
 import { resolveConfig } from "#/lib/analytics/config";
 import { ANALYTICS_SCRIPT_URL } from "#/lib/analytics/loader";
+import { useRootAnalytics } from "#/lib/analytics/root";
 import { withBase } from "#/lib/base-path";
 import { shouldShowInsecureContextNotice } from "#/lib/secure-context";
 import appCss from "../styles.css?url";
@@ -116,6 +118,31 @@ function InsecureContextNotice() {
 }
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+	// Analytics belongs to the shell: the script must be injected once whichever
+	// route the user landed on, and page views must fire on every route change.
+	// Mounting this per-route is what previously limited analytics to settings.
+	const pathname = useRouterState({
+		select: (state) => state.location.pathname,
+	});
+	useRootAnalytics(pathname);
+
+	/**
+	 * Route content is withheld from the first client render.
+	 *
+	 * The SPA shell is prerendered while the router is still suspended, so the
+	 * served body contains an empty Suspense placeholder rather than the page
+	 * markup. On the client the router can already be resolved by the time React
+	 * hydrates — the home route's chunk is `modulepreload`ed, and a warm HTTP cache
+	 * resolves it before first paint. React then finds page markup where the server
+	 * had a placeholder and reports `Minified React error #418`, discarding the
+	 * prerendered tree.
+	 *
+	 * Rendering the page only after mount makes the first client render match what
+	 * the server sent. The page then appears as a normal update.
+	 */
+	const [mounted, setMounted] = useState(false);
+	useEffect(() => setMounted(true), []);
+
 	return (
 		<html lang="zh-CN">
 			<head>
@@ -126,7 +153,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				{/* Update prompt, offline notice. Mounted in the shell so it appears on
 				    every route without each page remembering it. */}
 				<PwaStatus />
-				{children}
+				{mounted ? children : null}
 				<Scripts />
 			</body>
 		</html>

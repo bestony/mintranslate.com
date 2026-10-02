@@ -298,6 +298,9 @@ export function HistoryPage() {
 			{/* Filters */}
 			<div className="mt-4 flex flex-wrap items-center gap-3">
 				<input
+					id="history-search"
+					name="history-search"
+					aria-label="搜索历史记录"
 					className="w-full max-w-sm rounded-md border border-input bg-background px-3 py-2 text-sm"
 					placeholder="搜索原文或译文"
 					value={search.input}
@@ -307,6 +310,8 @@ export function HistoryPage() {
 				<label className="flex items-center gap-2 text-sm">
 					<input
 						type="checkbox"
+						id="history-favorites-only"
+						name="history-favorites-only"
 						checked={favoritesOnly}
 						onChange={(event) => setFavoritesOnly(event.target.checked)}
 					/>
@@ -314,6 +319,9 @@ export function HistoryPage() {
 				</label>
 
 				<select
+					id="history-source-language"
+					name="history-source-language"
+					aria-label="按源语言筛选"
 					className="rounded-md border border-input bg-background px-2 py-2 text-sm"
 					value={sourceLang}
 					onChange={(event) => setSourceLang(event.target.value)}
@@ -327,6 +335,9 @@ export function HistoryPage() {
 				</select>
 
 				<select
+					id="history-target-language"
+					name="history-target-language"
+					aria-label="按目标语言筛选"
 					className="rounded-md border border-input bg-background px-2 py-2 text-sm"
 					value={targetLang}
 					onChange={(event) => setTargetLang(event.target.value)}
@@ -403,6 +414,8 @@ export function HistoryPage() {
 				</button>
 				<input
 					ref={fileRef}
+					id="history-import-file"
+					name="history-import-file"
 					type="file"
 					accept=".json,.csv,application/json,text/csv"
 					className="hidden"
@@ -486,6 +499,8 @@ export function HistoryPage() {
 					<div className="flex h-full items-start gap-3 border-line border-b px-3 py-2">
 						<input
 							type="checkbox"
+							id={`history-select-${record.id}`}
+							name="history-select"
 							className="mt-1"
 							aria-label="选择此记录"
 							checked={selected.has(record.id)}

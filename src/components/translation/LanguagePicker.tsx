@@ -149,6 +149,9 @@ export function LanguagePicker({
 			<div className="island-shell w-full max-w-md rounded-xl p-4">
 				<input
 					ref={searchRef}
+					id="language-search"
+					name="language-search"
+					aria-label="搜索语言"
 					className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring"
 					placeholder="搜索语言（中文名、英文名或代码）"
 					value={term}

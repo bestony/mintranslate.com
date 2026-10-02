@@ -71,6 +71,10 @@ export function usePwa(): PwaState {
 		undefined,
 	);
 	const [canPromptInstall, setCanPromptInstall] = useState(false);
+	// Starts online deliberately: that is the state the prerender renders, since it
+	// has no `navigator`. The real value is read in the effect below, which is also
+	// the only place the offline notice may appear. Reading `navigator.onLine`
+	// during the initial render would make the offline notice flip on hydration.
 	const [online, setOnline] = useState(true);
 	const [platform, setPlatform] = useState<Platform>("other");
 	const [offlineAvailable, setOfflineAvailable] = useState(false);

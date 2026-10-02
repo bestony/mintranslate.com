@@ -7,7 +7,7 @@
  * reporting a failure — dismissing a sheet is normal, not an error.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { logger } from "#/lib/logger";
 import {
 	buildMailtoLink,
@@ -45,11 +45,27 @@ export function ShareMenu({
 
 	// `navigator.share` is the environment's own capability; when the caller did
 	// not inject one, ask the browser and treat absence as "not available".
-	const shareFn =
-		systemShare ??
-		(typeof navigator !== "undefined" && typeof navigator.share === "function"
-			? (data: { title: string; text: string }) => navigator.share(data)
-			: undefined);
+	/**
+	 * The system share sheet is resolved after mount, not during render.
+	 *
+	 * `navigator.share` presence changes which channels are offered, so reading it
+	 * during render would make the first client render structurally different from
+	 * the prerendered HTML. Resolving it in an effect keeps the first frame
+	 * identical and adds the channel a moment later.
+	 */
+	const [shareFn, setShareFn] =
+		useState<ShareMenuProps["systemShare"]>(systemShare);
+
+	useEffect(() => {
+		if (systemShare !== undefined) return;
+		if (typeof navigator === "undefined") return;
+		if (typeof navigator.share !== "function") return;
+		const share = navigator.share.bind(navigator);
+		setShareFn(
+			() => (data: { title: string; text: string; url?: string }) =>
+				share(data),
+		);
+	}, [systemShare]);
 
 	const plan = planShareChannels(shareFn !== undefined);
 

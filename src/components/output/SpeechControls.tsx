@@ -82,7 +82,22 @@ export function SpeechControls({
 
 	/** One engine for the component's lifetime. */
 	const engine = useMemo(() => createBrowserSpeechEngine(), []);
-	const available = useMemo(() => engine.isAvailable(), [engine]);
+
+	/**
+	 * Availability is resolved after mount, never during render.
+	 *
+	 * The prerender has no `speechSynthesis`, so `isAvailable()` is false there.
+	 * Reading it during render would make the first client render (where it is
+	 * true) disagree with the prerendered HTML — the two disagree not just in text
+	 * but in structure, because the notice below is conditional. React then
+	 * discards the prerendered tree, which is what the browser reports as
+	 * `Minified React error #418`.
+	 */
+	const [available, setAvailable] = useState(false);
+
+	useEffect(() => {
+		setAvailable(engine.isAvailable());
+	}, [engine]);
 
 	// The controller reports through state rather than owning it, so a superseded
 	// read cannot leave the interface claiming to be speaking.

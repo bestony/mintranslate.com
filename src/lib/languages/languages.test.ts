@@ -205,6 +205,25 @@ describe("quick languages", () => {
 		expect(chips).not.toContain("bogus");
 	});
 
+	it("excludes the row's own current language, so it is not shown twice", () => {
+		// The reported defect: the target row's label button showed 中文（简体） and the
+		// chip row offered 中文（简体） again, because the call site only excluded the
+		// *other* side. Excluding both sides is what removes the duplicate.
+		const targetChips = quickLanguages({}, ["zh-Hans", "auto"]);
+		expect(targetChips).not.toContain("zh-Hans");
+		expect(targetChips).toHaveLength(QUICK_CHIP_COUNT);
+
+		const sourceChips = quickLanguages({}, ["auto", "zh-Hans"]);
+		expect(sourceChips).not.toContain("auto");
+		expect(sourceChips).toHaveLength(QUICK_CHIP_COUNT);
+	});
+
+	it("keeps every chip distinct when the current language is excluded", () => {
+		const chips = quickLanguages({ en: 9, ja: 5 }, ["en", "auto"]);
+		expect(new Set(chips).size).toBe(chips.length);
+		expect(chips).toHaveLength(QUICK_CHIP_COUNT);
+	});
+
 	it("backfills when exclusions thin the defaults", () => {
 		const chips = quickLanguages({}, ["en", "ja", "zh-Hans"]);
 		expect(chips).toHaveLength(QUICK_CHIP_COUNT);

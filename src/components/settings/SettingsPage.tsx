@@ -6,9 +6,8 @@
  * this component only renders and dispatches.
  */
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { saveId } from "#/lib/analytics/config";
-import { createAnalytics } from "#/lib/analytics/track";
 import { useAnalytics } from "#/lib/analytics/use-analytics";
 import {
 	defaultConnectionName,
@@ -75,6 +74,7 @@ function BehaviourSettings({
 							<label key={option} className="flex items-center gap-2">
 								<input
 									type="radio"
+									id={`tier-${option}`}
 									name="tier"
 									checked={tier === option}
 									onChange={() => onTierChange(option)}
@@ -125,6 +125,8 @@ function BehaviourSettings({
 					<span className="font-medium text-sm">自定义附加指令（可选）</span>
 					<textarea
 						className="mt-1 h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+						id="custom-instruction"
+						name="custom-instruction"
 						value={customInstruction}
 						maxLength={MAX_CUSTOM_INSTRUCTION_LENGTH + 1}
 						onChange={(event) => onCustomInstructionChange(event.target.value)}
@@ -161,15 +163,16 @@ export function SettingsPage() {
 	// One controller for the page: it owns per-connection pacing and lets this
 	// component abort an in-flight test when the user switches or deletes.
 	const [testController] = useState(() => createConnectionTestController());
-	/** Binding owns the toggle, page views and the deployment-controlled field. */
-	const analyticsBinding = useAnalytics({
-		byokConfigured: store.activeId !== null,
-		pathname: "/settings",
-	});
-	const analytics = useMemo(
-		() => createAnalytics({ byokConfigured: () => store.activeId !== null }),
-		[store],
-	);
+	/**
+	 * The toggle and the deployment-controlled field.
+	 *
+	 * Page views and script injection belong to the shell, so this binding no
+	 * longer initialises analytics — it only consumes the shared tracker. The
+	 * settings route previously owned initialisation, which is why analytics was
+	 * active there alone.
+	 */
+	const analyticsBinding = useAnalytics();
+	const analytics = analyticsBinding.analytics;
 
 	const currentId = editingId ?? store.connections[0]?.id ?? null;
 	const current = store.connections.find(
@@ -299,6 +302,9 @@ export function SettingsPage() {
 						</button>
 					))}
 					<select
+						id="add-connection"
+						name="add-connection"
+						aria-label="新增连接"
 						className={ghostButtonClass}
 						value=""
 						onChange={(event) => {
@@ -392,6 +398,8 @@ export function SettingsPage() {
 				<label className="mt-3 flex items-center gap-2 text-sm">
 					<input
 						type="checkbox"
+						id="statistics-enabled"
+						name="statistics-enabled"
 						checked={analyticsBinding.statisticsOn}
 						onChange={(event) =>
 							analyticsBinding.setStatisticsOn(event.target.checked)
@@ -404,6 +412,8 @@ export function SettingsPage() {
 					<label className="block text-sm">
 						<span className="font-medium">测量 ID（可选）</span>
 						<input
+							id="measurement-id"
+							name="measurement-id"
 							className="mt-1 w-full max-w-sm rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
 							placeholder="G-XXXXXXXXXX"
 							value={
@@ -502,6 +512,8 @@ export function SettingsPage() {
 				<label className="mt-3 flex items-center gap-2 text-sm">
 					<input
 						type="checkbox"
+						id="export-include-keys"
+						name="export-include-keys"
 						checked={exportIncludeKeys}
 						onChange={(event) => setExportIncludeKeys(event.target.checked)}
 					/>

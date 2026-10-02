@@ -180,6 +180,8 @@ export function FeedbackPanel({
 			{editingSuggestion && (
 				<div className="w-full">
 					<textarea
+						id="feedback-comment"
+						name="feedback-comment"
 						className="mt-2 h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
 						aria-label="修改建议"
 						value={suggestion}

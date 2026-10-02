@@ -172,6 +172,8 @@ export function ConnectionForm({
 				<label className="block">
 					<span className={labelClass}>服务商</span>
 					<select
+						id="connection-provider"
+						name="provider"
 						className={inputClass}
 						value={connection.provider}
 						onChange={(event) =>
@@ -189,6 +191,8 @@ export function ConnectionForm({
 				<label className="block">
 					<span className={labelClass}>名称</span>
 					<input
+						id="connection-name"
+						name="connection-name"
 						className={inputClass}
 						value={connection.name}
 						onChange={(event) => onChange({ name: event.target.value })}
@@ -198,6 +202,8 @@ export function ConnectionForm({
 				<label className="block">
 					<span className={labelClass}>Endpoint（Base URL）</span>
 					<input
+						id="connection-endpoint"
+						name="connection-endpoint"
 						className={inputClass}
 						value={connection.endpoint}
 						placeholder={preset?.endpoint || "https://your-endpoint/v1"}
@@ -208,6 +214,8 @@ export function ConnectionForm({
 				<label className="block">
 					<span className={labelClass}>Model</span>
 					<input
+						id="connection-model"
+						name="connection-model"
 						className={inputClass}
 						value={connection.model}
 						list={`models-${connection.id}`}
@@ -224,6 +232,8 @@ export function ConnectionForm({
 					<span className={labelClass}>API Key</span>
 					<div className="flex gap-2">
 						<input
+							id="connection-api-key"
+							name="connection-api-key"
 							className={inputClass}
 							type={revealKey ? "text" : "password"}
 							value={apiKey}
@@ -264,6 +274,8 @@ export function ConnectionForm({
 					<label className="flex items-center gap-2">
 						<input
 							type="checkbox"
+							id="capability-text"
+							name="capability-text"
 							checked={connection.capabilities.text}
 							onChange={(event) =>
 								onChange({
@@ -279,6 +291,8 @@ export function ConnectionForm({
 					<label className="flex items-center gap-2">
 						<input
 							type="checkbox"
+							id="capability-vision"
+							name="capability-vision"
 							checked={connection.capabilities.vision}
 							onChange={(event) =>
 								onChange({
@@ -296,6 +310,8 @@ export function ConnectionForm({
 				<label className="flex items-center gap-2 text-sm">
 					档位
 					<select
+						id="connection-capabilities"
+						name="connection-capabilities"
 						className="rounded-md border border-input bg-background px-2 py-1 text-sm"
 						value={connection.tier ?? ""}
 						onChange={(event) => {
