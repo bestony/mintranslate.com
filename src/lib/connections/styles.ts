@@ -10,6 +10,9 @@
  * constraints.
  */
 
+import type { GlossaryMatch } from "../glossary";
+import { logger } from "../logger";
+
 export const MAX_CUSTOM_INSTRUCTION_LENGTH = 500;
 
 /** Built-in styles, in the order the PRD lists them. */
@@ -72,6 +75,29 @@ export interface AssembledPrompt {
 	readonly systemInstruction: string;
 	/** User-side content: the custom instruction plus the text to translate. */
 	readonly userContent: string;
+	/** All glossary matches supplied by the caller, ordered for display. */
+	readonly glossaryMatches: readonly GlossaryPromptTerm[];
+	/** Matches actually included in the prompt after the injection cap. */
+	readonly injectedGlossaryMatches: readonly GlossaryPromptTerm[];
+}
+
+/** Structural glossary data accepted by prompt assembly. */
+export type GlossaryPromptTerm = Pick<GlossaryMatch, "source" | "target"> &
+	Partial<
+		Pick<GlossaryMatch, "index" | "position" | "start" | "end" | "priority">
+	>;
+
+function promptPosition(term: GlossaryPromptTerm, fallback: number): number {
+	return term.index ?? term.start ?? term.position ?? fallback;
+}
+
+function glossaryBlock(terms: readonly GlossaryPromptTerm[]): string {
+	if (terms.length === 0) return "";
+	return [
+		"Glossary instructions (mandatory):",
+		"Use the specified target term whenever the corresponding source term appears.",
+		...terms.map((term) => `- ${term.source} => ${term.target}`),
+	].join("\n");
 }
 
 /**
@@ -85,6 +111,11 @@ export function assemblePrompt(options: {
 	readonly styleId: TranslationStyleId;
 	readonly customInstruction?: string;
 	readonly text: string;
+	readonly glossaryMatches?: readonly GlossaryPromptTerm[];
+	/** Alias retained for callers that use the data model name. */
+	readonly glossaryTerms?: readonly GlossaryPromptTerm[];
+	/** Short alias for integrations that already call the section glossary. */
+	readonly glossary?: readonly GlossaryPromptTerm[];
 }): AssembledPrompt {
 	const style = TRANSLATION_STYLES.find(
 		(entry) => entry.id === options.styleId,
@@ -98,9 +129,40 @@ export function assemblePrompt(options: {
 		"Return only the translation.",
 	].join("\n");
 
+	const providedMatches =
+		options.glossaryMatches ?? options.glossaryTerms ?? options.glossary ?? [];
+	const orderedMatches = providedMatches
+		.map((term, originalIndex) => ({ term, originalIndex }))
+		.sort((left, right) => {
+			const priority = (right.term.priority ?? 0) - (left.term.priority ?? 0);
+			if (priority !== 0) return priority;
+			return (
+				promptPosition(left.term, left.originalIndex) -
+				promptPosition(right.term, right.originalIndex)
+			);
+		})
+		.map(({ term }) => term);
+	const injectedMatches = orderedMatches.slice(0, 50);
+	const glossary = glossaryBlock(injectedMatches);
 	const custom = options.customInstruction?.trim() ?? "";
 	const userContent =
-		custom === "" ? options.text : `${custom}\n\n${options.text}`;
+		glossary === ""
+			? custom === ""
+				? options.text
+				: `${custom}\n\n${options.text}`
+			: [glossary, custom, options.text]
+					.filter((part) => part !== "")
+					.join("\n\n");
 
-	return { systemInstruction, userContent };
+	logger.debug("glossary.prompt.injected", {
+		matchedCount: orderedMatches.length,
+		injectedCount: injectedMatches.length,
+	});
+
+	return {
+		systemInstruction,
+		userContent,
+		glossaryMatches: orderedMatches,
+		injectedGlossaryMatches: injectedMatches,
+	};
 }
