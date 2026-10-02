@@ -16,6 +16,8 @@ import { usePwa } from "./pwa/usePwa";
 const NAV = [
 	{ to: "/", label: "翻译" },
 	{ to: "/history", label: "历史" },
+	{ to: "/glossary", label: "术语表" },
+	{ to: "/memory", label: "翻译记忆" },
 	{ to: "/settings", label: "设置" },
 ] as const;
 
@@ -31,10 +33,10 @@ export function SiteHeader() {
 
 	return (
 		<header className="border-b border-border bg-background">
-			<div className="mx-auto flex w-full max-w-6xl items-center gap-4 px-4 py-4 md:px-6">
+			<div className="mx-auto flex w-full max-w-6xl items-center gap-4 overflow-hidden px-4 py-4 md:px-6">
 				<Link
 					to="/"
-					className="display-title flex min-h-11 items-center font-bold text-lg"
+					className="display-title flex min-h-11 shrink-0 items-center font-bold text-lg"
 				>
 					MinTranslate
 				</Link>
@@ -45,7 +47,7 @@ export function SiteHeader() {
 						// A bare arrow gave no clue what it did. The label is shown where
 						// there is room and the icon carries `title`/`aria-label` where
 						// there is not, so the control always names itself.
-						className="ml-auto flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-sm border border-border px-4 text-sm"
+						className="flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-sm border border-border px-4 text-sm"
 						title="安装应用"
 						aria-label="安装应用"
 						onClick={pwa.requestInstall}
@@ -56,20 +58,25 @@ export function SiteHeader() {
 				)}
 
 				<nav
-					className={`flex items-center gap-4 text-sm ${pwa.canPromptInstall ? "" : "ml-auto"}`}
+					className="min-w-0 flex-1 overflow-x-auto text-sm"
 					aria-label="主导航"
 				>
-					{NAV.map((item) => (
-						<Link
-							key={item.to}
-							to={item.to}
-							className="nav-link min-h-11 inline-flex items-center"
-							activeProps={{ className: "nav-link is-active" }}
-							activeOptions={{ exact: item.to === "/" }}
-						>
-							{item.label}
-						</Link>
-					))}
+					<div className="flex min-w-max items-center gap-4">
+						{NAV.map((item) => (
+							<Link
+								key={item.to}
+								to={item.to}
+								className="nav-link inline-flex min-h-11 shrink-0 items-center"
+								activeProps={{
+									className:
+										"nav-link inline-flex min-h-11 shrink-0 items-center is-active",
+								}}
+								activeOptions={{ exact: item.to === "/" }}
+							>
+								{item.label}
+							</Link>
+						))}
+					</div>
 				</nav>
 			</div>
 		</header>

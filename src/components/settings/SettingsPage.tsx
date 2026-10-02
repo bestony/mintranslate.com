@@ -6,7 +6,7 @@
  * this component only renders and dispatches.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { saveId } from "#/lib/analytics/config";
 import { useAnalytics } from "#/lib/analytics/use-analytics";
 import {
@@ -27,6 +27,7 @@ import {
 import { createConnectionTestController } from "#/lib/connections/test-controller";
 import { describeTierTarget, resolveTier } from "#/lib/connections/tiers";
 import { maskSecret } from "#/lib/credentials/redact";
+import { createTranslationMemoryPreference } from "#/lib/translation-memory";
 import { usePwa } from "../pwa/usePwa";
 import { ConnectionForm, PresetHint } from "./ConnectionForm";
 import { PrivacyNotice } from "./PrivacyNotice";
@@ -152,6 +153,10 @@ function BehaviourSettings({
 
 export function SettingsPage() {
 	const store = useConnectionStore();
+	const [memoryPreference] = useState(() =>
+		createTranslationMemoryPreference(),
+	);
+	const [memoryEnabled, setMemoryEnabled] = useState(true);
 	const [editingId, setEditingId] = useState<string | null>(null);
 	const [exportIncludeKeys, setExportIncludeKeys] = useState(false);
 	const [exportNotice, setExportNotice] = useState<string | undefined>(
@@ -179,6 +184,10 @@ export function SettingsPage() {
 	 */
 	const analyticsBinding = useAnalytics();
 	const analytics = analyticsBinding.analytics;
+
+	useEffect(() => {
+		setMemoryEnabled(memoryPreference.mount());
+	}, [memoryPreference]);
 
 	const currentId = editingId ?? store.connections[0]?.id ?? null;
 	const current = store.connections.find(
@@ -393,6 +402,28 @@ export function SettingsPage() {
 				instructionNotice={instructionNotice}
 				usableConnections={store.usableConnections}
 			/>
+
+			<section className={sectionClass}>
+				<h2 className="font-semibold text-xl">本地翻译记忆</h2>
+				<p className="mt-2 text-muted-foreground text-sm">
+					启用后，翻译结果会在本浏览器中保存并复用。原文、译文和模型上下文不会上传到
+					MinTranslate。
+				</p>
+				<label className="mt-4 flex min-h-11 items-center gap-2 text-sm">
+					<input
+						type="checkbox"
+						id="translation-memory-enabled"
+						name="translation-memory-enabled"
+						checked={memoryEnabled}
+						onChange={(event) => {
+							const next = event.target.checked;
+							setMemoryEnabled(next);
+							memoryPreference.setEnabled(next);
+						}}
+					/>
+					启用翻译记忆
+				</label>
+			</section>
 
 			<section className={sectionClass}>
 				<h2 className="font-semibold text-xl">匿名使用统计</h2>
