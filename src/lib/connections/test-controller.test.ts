@@ -180,3 +180,71 @@ describe("connection test controller — abort on switch or delete", () => {
 		await expect(pending).resolves.toMatchObject({ kind: "refused" });
 	});
 });
+
+describe("connection test pacing — unchanged by the pre-flight check", () => {
+	it("still enforces one flight per connection", async () => {
+		const gate = deferred<ConnectionTestResult>();
+		const runTest = vi.fn().mockReturnValue(gate.promise);
+		const controller = createConnectionTestController({ runTest });
+
+		const first = controller.request(connection({ id: "a" }), "k");
+		const second = await controller.request(connection({ id: "a" }), "k");
+
+		expect(second).toEqual({
+			kind: "refused",
+			refusal: { kind: "in-progress" },
+		});
+
+		gate.resolve(success);
+		await first;
+	});
+
+	it("still applies the cooldown after a completed test", async () => {
+		let now = 0;
+		const runTest = vi.fn().mockResolvedValue(success);
+		const controller = createConnectionTestController({
+			runTest,
+			now: () => now,
+		});
+
+		await controller.request(connection({ id: "a" }), "k");
+		const blocked = await controller.request(connection({ id: "a" }), "k");
+
+		expect(blocked).toEqual({
+			kind: "refused",
+			refusal: { kind: "cooldown", remainingMs: CONNECTION_TEST_COOLDOWN_MS },
+		});
+
+		now += CONNECTION_TEST_COOLDOWN_MS;
+		await expect(
+			controller.request(connection({ id: "a" }), "k"),
+		).resolves.toMatchObject({ kind: "result" });
+	});
+
+	it("treats a pre-flight refusal as a completed test for pacing", async () => {
+		// The controller measures cooldown from when a test *finishes*, and a
+		// refusal finishes immediately. Documented here so the behaviour is a
+		// decision rather than an accident: a refused test still counts, because
+		// otherwise a user could hammer the button and re-run the same pre-flight
+		// check in a tight loop for no benefit.
+		const now = 0;
+		const runTest = vi.fn().mockResolvedValue({
+			ok: false,
+			latencyMs: 0,
+			attribution: { type: "mixed_content", summary: "blocked" },
+		} satisfies ConnectionTestResult);
+		const controller = createConnectionTestController({
+			runTest,
+			now: () => now,
+		});
+
+		await controller.request(connection({ id: "a" }), "k");
+		const blocked = await controller.request(connection({ id: "a" }), "k");
+
+		expect(blocked).toEqual({
+			kind: "refused",
+			refusal: { kind: "cooldown", remainingMs: CONNECTION_TEST_COOLDOWN_MS },
+		});
+		expect(runTest).toHaveBeenCalledTimes(1);
+	});
+});

@@ -206,3 +206,124 @@ describe("model caller — busy and cancel", () => {
 		expect(() => caller.cancel("nobody")).not.toThrow();
 	});
 });
+
+describe("model caller — mixed content is refused before any request", () => {
+	/** Run with the secure-context flag set the way a real HTTPS page reports it. */
+	function withSecureContext<T>(value: boolean, fn: () => T): T {
+		const saved = Object.getOwnPropertyDescriptor(
+			globalThis,
+			"isSecureContext",
+		);
+		Object.defineProperty(globalThis, "isSecureContext", {
+			configurable: true,
+			value,
+			writable: true,
+		});
+		try {
+			return fn();
+		} finally {
+			if (saved) Object.defineProperty(globalThis, "isSecureContext", saved);
+			else Reflect.deleteProperty(globalThis, "isSecureContext");
+		}
+	}
+
+	it("refuses a plaintext endpoint and never calls the transport", async () => {
+		const transport = vi.fn().mockResolvedValue("should not run");
+		const caller = createModelCaller({
+			limiterFor: () => createConcurrencyLimiter(),
+			transport,
+		});
+
+		const outcome = await withSecureContext(true, () =>
+			caller.call({
+				connection: connection({
+					id: "http-endpoint",
+					endpoint: "http://192.168.1.50:11434/v1",
+				}),
+				apiKey: "k",
+				requirement: "text",
+				userContent: "hello",
+			}),
+		);
+
+		expect(outcome.kind).toBe("refused");
+		if (
+			outcome.kind === "refused" &&
+			outcome.refusal.kind === "mixed_content"
+		) {
+			expect(outcome.refusal.attribution.type).toBe("mixed_content");
+			expect(outcome.refusal.attribution.checklist).toBeDefined();
+		} else {
+			throw new Error("expected a mixed_content refusal");
+		}
+		// The decisive assertion: no request was attempted.
+		expect(transport).not.toHaveBeenCalled();
+	});
+
+	it("does not spend a limiter slot on a guaranteed refusal", async () => {
+		// A queued call would hold a slot while being certain to fail.
+		const limiter = createConcurrencyLimiter();
+		const runSpy = vi.spyOn(limiter, "run");
+		const caller = createModelCaller({ limiterFor: () => limiter });
+
+		await withSecureContext(true, () =>
+			caller.call({
+				connection: connection({
+					id: "q",
+					endpoint: "http://internal:11434/v1",
+				}),
+				apiKey: "k",
+				requirement: "text",
+				userContent: "hi",
+			}),
+		);
+
+		expect(runSpy).not.toHaveBeenCalled();
+	});
+
+	it("allows an https endpoint through", async () => {
+		const transport = vi.fn().mockResolvedValue("ok");
+		const caller = createModelCaller({
+			limiterFor: () => createConcurrencyLimiter(),
+			transport,
+		});
+
+		const outcome = await withSecureContext(true, () =>
+			caller.call({
+				connection: connection({
+					id: "secure",
+					endpoint: "https://model.internal/v1",
+				}),
+				apiKey: "k",
+				requirement: "text",
+				userContent: "hello",
+			}),
+		);
+
+		expect(outcome).toEqual({ kind: "result", text: "ok" });
+		expect(transport).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not refuse on an insecure page", async () => {
+		// A plain-HTTP page calling a plain-HTTP endpoint is not mixed content.
+		const transport = vi.fn().mockResolvedValue("ok");
+		const caller = createModelCaller({
+			limiterFor: () => createConcurrencyLimiter(),
+			transport,
+		});
+
+		const outcome = await withSecureContext(false, () =>
+			caller.call({
+				connection: connection({
+					id: "plain",
+					endpoint: "http://internal:11434/v1",
+				}),
+				apiKey: "k",
+				requirement: "text",
+				userContent: "hello",
+			}),
+		);
+
+		expect(outcome).toEqual({ kind: "result", text: "ok" });
+	});
+});

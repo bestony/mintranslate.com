@@ -11,9 +11,10 @@
  * (spec `credential-storage`).
  */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createAnalytics } from "#/lib/analytics/track";
 import { describeWait } from "#/lib/call-control/backoff";
+import { intranetHint } from "#/lib/connections/intranet-hint";
 import type {
 	Connection,
 	ConnectionEdit,
@@ -59,6 +60,49 @@ function DirectConnectBadge({ provider }: { readonly provider: ProviderId }) {
 		>
 			{verified ? "已验证可直连" : "需自行测试"}
 		</span>
+	);
+}
+
+/**
+ * Pre-flight conditions for a self-hosted endpoint.
+ *
+ * The page origin is resolved after mount: the prerender has no `location`, and
+ * reading it during render would make the first client render disagree with the
+ * shell (see the hydration suite). Nothing here depends on a test result, so the
+ * notice is visible from the moment the endpoint is typed.
+ */
+function EndpointConditionsNotice({
+	provider,
+	endpoint,
+}: {
+	readonly provider: ProviderId;
+	readonly endpoint: string;
+}) {
+	const [pageUrl, setPageUrl] = useState<string | undefined>(undefined);
+
+	useEffect(() => {
+		setPageUrl(window.location.href);
+	}, []);
+
+	const hint = intranetHint({ provider, endpoint, pageUrl });
+	if (!hint.show) return null;
+
+	return (
+		<div className="rounded-md border border-border bg-surface p-4 text-xs md:col-span-2">
+			<p className="font-medium">内网自建模型的接入前提</p>
+			<ul className="mt-2 list-disc space-y-2 pl-6 text-muted-foreground">
+				{hint.conditions.map((condition) => (
+					<li key={condition}>{condition}</li>
+				))}
+			</ul>
+			{/* A document reference, not a link: the deployment guide is a file in the
+			    repository that this application does not serve, so an in-app link would
+			    be a dead end. Naming the section is what a deployer can act on. */}
+			<p className="mt-2 text-muted-foreground">
+				各推理框架（Ollama / vLLM / LM Studio / Nginx
+				反代）的放行配置与自查命令见 部署文档的「{hint.docsSection}」一节。
+			</p>
+		</div>
 	);
 }
 
@@ -213,6 +257,13 @@ export function ConnectionForm({
 						onChange={(event) => onChange({ endpoint: event.target.value })}
 					/>
 				</label>
+
+				{/* Shown before a test is run, so the conditions are known before the
+				    user meets the opaque failure the browser would give. */}
+				<EndpointConditionsNotice
+					provider={connection.provider}
+					endpoint={connection.endpoint}
+				/>
 
 				<label className="block">
 					<span className={labelClass}>Model</span>

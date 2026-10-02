@@ -22,7 +22,10 @@ import {
 	reportedHost,
 } from "#/lib/analytics/track";
 import { createKeyedLimiters } from "#/lib/call-control/concurrency";
-import { attributeFailure } from "#/lib/connections/attribution";
+import {
+	attributeFailure,
+	type FailureAttribution,
+} from "#/lib/connections/attribution";
 import type { Connection, ProviderId } from "#/lib/connections/model";
 import { createModelCaller } from "#/lib/connections/model-caller";
 import { CUSTOM_INSTRUCTION_KEY, STYLE_KEY } from "#/lib/connections/storage";
@@ -456,7 +459,14 @@ export function TranslationWorkspace() {
 						// The input is deliberately left untouched, and any previous
 						// successful output stays until a new success replaces it.
 						setPending(false);
-						const attribution = attributeFailure({ error });
+						// A refusal we already attributed carries its own verdict. Re-running
+						// the mapping here would overwrite it: this error has no HTTP status
+						// and no readable message, so it would be re-classified as the
+						// generic combined cause and lose the mixed-content guidance.
+						const carried = (
+							error as { attribution?: FailureAttribution } | undefined
+						)?.attribution;
+						const attribution = carried ?? attributeFailure({ error });
 						logger.warn("translation.ui.failure", {
 							errorType: attribution.type,
 						});
@@ -530,6 +540,18 @@ export function TranslationWorkspace() {
 							throw Object.assign(new Error("superseded"), {
 								name: "SupersededError",
 							});
+						}
+						if (outcome.refusal.kind === "mixed_content") {
+							// Carry the attribution rather than flattening it to a
+							// message: the checklist is what makes this actionable, and
+							// the same cause must read the same as in the connection test.
+							throw Object.assign(
+								new Error(outcome.refusal.attribution.summary),
+								{
+									name: "MixedContentError",
+									attribution: outcome.refusal.attribution,
+								},
+							);
 						}
 						throw new Error(outcome.refusal.reason);
 					}

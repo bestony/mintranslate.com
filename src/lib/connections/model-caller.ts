@@ -22,6 +22,7 @@ import type { ConcurrencyLimiter } from "../call-control/concurrency";
 import { createLatestCall } from "../call-control/latest-call";
 import { createSingleFlightWithState } from "../call-control/single-flight";
 import { createAdapterForConnection } from "./adapters";
+import { type FailureAttribution, preflightMixedContent } from "./attribution";
 import { type CallRequirement, capabilityBlocker } from "./capability-guard";
 import type { Connection } from "./model";
 
@@ -40,6 +41,17 @@ export interface ModelCallRequest {
 /** Why a call did not produce a result. */
 export type ModelCallRefusal =
 	| { readonly kind: "capability"; readonly reason: string }
+	/**
+	 * The request would be blocked by the browser before it left: the page is
+	 * secure and the endpoint is not HTTPS.
+	 *
+	 * Carries the full attribution so the caller reports the same cause and the
+	 * same checklist the connection test would (spec `intranet-connectivity`).
+	 */
+	| {
+			readonly kind: "mixed_content";
+			readonly attribution: FailureAttribution;
+	  }
 	/** A newer call for the same connection took over. */
 	| { readonly kind: "superseded" };
 
@@ -106,6 +118,22 @@ export function createModelCaller(deps: ModelCallerDeps): ModelCaller {
 				return {
 					kind: "refused",
 					refusal: { kind: "capability", reason: blocker },
+				};
+			}
+
+			// Refuse a request the browser is certain to block, before the limiter
+			// and before any transport work: spending a queue slot and a round trip
+			// on a guaranteed refusal would waste both, and the resulting error
+			// would be reported as a generic network failure.
+			const blocked = preflightMixedContent({
+				isSecureContext: globalThis.isSecureContext === true,
+				pageUrl: typeof location === "undefined" ? undefined : location.href,
+				endpoint: connection.endpoint,
+			});
+			if (blocked !== undefined) {
+				return {
+					kind: "refused",
+					refusal: { kind: "mixed_content", attribution: blocked },
 				};
 			}
 

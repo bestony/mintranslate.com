@@ -15,7 +15,11 @@ import { chat } from "@tanstack/ai";
 import { parseRetryAfter } from "../call-control/backoff";
 import { scrubSecrets } from "../credentials/redact";
 import { createAdapterForConnection, probeModelOptions } from "./adapters";
-import { attributeFailure, type FailureAttribution } from "./attribution";
+import {
+	attributeFailure,
+	type FailureAttribution,
+	preflightMixedContent,
+} from "./attribution";
 import type { Connection } from "./model";
 
 /** Deadline for a connection test, in milliseconds. */
@@ -159,6 +163,24 @@ export async function testConnection(
 	const timeoutMs = options.timeoutMs ?? CONNECTION_TEST_TIMEOUT_MS;
 	const controller = new AbortController();
 	const startedAt = Date.now();
+
+	// Decide before spending a request. A mixed-content refusal is guaranteed, and
+	// the error the browser would raise is indistinguishable from a CORS rejection
+	// or an unreachable host — so the only way to report the real cause is to ask
+	// first. This path is shared with the workspace through the same predicate, so
+	// both give the same verdict (spec `intranet-connectivity`).
+	const blocked = preflightMixedContent({
+		isSecureContext: globalThis.isSecureContext === true,
+		pageUrl: typeof location === "undefined" ? undefined : location.href,
+		endpoint: connection.endpoint,
+	});
+	if (blocked !== undefined) {
+		return {
+			ok: false,
+			latencyMs: Date.now() - startedAt,
+			attribution: blocked,
+		};
+	}
 
 	let timedOut = false;
 	const timer = setTimeout(() => {
