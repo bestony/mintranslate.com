@@ -11,7 +11,8 @@
  * (spec `credential-storage`).
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { createAnalytics } from "#/lib/analytics/track";
 import { describeWait } from "#/lib/call-control/backoff";
 import type {
 	Connection,
@@ -71,6 +72,11 @@ export function ConnectionForm({
 	testController,
 }: ConnectionFormProps) {
 	const [revealKey, setRevealKey] = useState(false);
+	/** Analytics entry point for configuration and connection-test events. */
+	const analytics = useMemo(
+		() => createAnalytics({ byokConfigured: () => true }),
+		[],
+	);
 	const [testing, setTesting] = useState(false);
 	const [result, setResult] = useState<
 		| { ok: true; latencyMs: number }
@@ -105,8 +111,21 @@ export function ConnectionForm({
 			if (outcomeResult.ok) {
 				setResult({ ok: true, latencyMs: outcomeResult.latencyMs });
 				onTested("ok");
+				analytics.track("connection_test", {
+					provider: connection.provider,
+					success: true,
+					error_type: "unknown",
+					latency_ms: outcomeResult.latencyMs,
+				});
 				return;
 			}
+
+			analytics.track("connection_test", {
+				provider: connection.provider,
+				success: false,
+				error_type: outcomeResult.attribution.type,
+				latency_ms: outcomeResult.latencyMs,
+			});
 
 			const lines = [outcomeResult.attribution.summary];
 

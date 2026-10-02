@@ -6,7 +6,10 @@
  * this component only renders and dispatches.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { saveId } from "#/lib/analytics/config";
+import { createAnalytics } from "#/lib/analytics/track";
+import { useAnalytics } from "#/lib/analytics/use-analytics";
 import {
 	defaultConnectionName,
 	type ModelTier,
@@ -26,6 +29,7 @@ import { createConnectionTestController } from "#/lib/connections/test-controlle
 import { describeTierTarget, resolveTier } from "#/lib/connections/tiers";
 import { maskSecret } from "#/lib/credentials/redact";
 import { ConnectionForm, PresetHint } from "./ConnectionForm";
+import { PrivacyNotice } from "./PrivacyNotice";
 
 const sectionClass = "island-shell mt-6 rounded-xl p-5";
 const buttonClass =
@@ -145,6 +149,7 @@ export function SettingsPage() {
 		undefined,
 	);
 	const [clearConfirming, setClearConfirming] = useState(false);
+	const [privacyOpen, setPrivacyOpen] = useState(false);
 	const [instructionNotice, setInstructionNotice] = useState<
 		string | undefined
 	>(undefined);
@@ -153,6 +158,15 @@ export function SettingsPage() {
 	// One controller for the page: it owns per-connection pacing and lets this
 	// component abort an in-flight test when the user switches or deletes.
 	const [testController] = useState(() => createConnectionTestController());
+	/** Binding owns the toggle, page views and the deployment-controlled field. */
+	const analyticsBinding = useAnalytics({
+		byokConfigured: store.activeId !== null,
+		pathname: "/settings",
+	});
+	const analytics = useMemo(
+		() => createAnalytics({ byokConfigured: () => store.activeId !== null }),
+		[store],
+	);
 
 	const currentId = editingId ?? store.connections[0]?.id ?? null;
 	const current = store.connections.find(
@@ -162,6 +176,11 @@ export function SettingsPage() {
 	function addConnection(provider: ProviderId) {
 		const id = store.createFromPreset(provider);
 		setEditingId(id);
+		analytics.track("provider_config_save", {
+			provider,
+			is_custom_endpoint: provider === "custom",
+			has_base_url_override: false,
+		});
 	}
 
 	function changeProvider(provider: ProviderId) {
@@ -179,6 +198,11 @@ export function SettingsPage() {
 			model: defaults.models[0] ?? "",
 			capabilities: defaults.capabilities,
 			name: defaultConnectionName(label, defaults.models[0] ?? ""),
+		});
+		analytics.track("provider_config_save", {
+			provider,
+			is_custom_endpoint: provider === "custom",
+			has_base_url_override: defaults.endpoint !== "",
 		});
 	}
 
@@ -354,6 +378,57 @@ export function SettingsPage() {
 				instructionNotice={instructionNotice}
 				usableConnections={store.usableConnections}
 			/>
+
+			<section className={sectionClass}>
+				<h2 className="font-semibold text-xl">匿名使用统计</h2>
+				<p className="mt-2 text-muted-foreground text-sm">
+					默认开启，仅上报匿名的事件与元数据（不含翻译内容与密钥）。关闭后立即停止上报并清理已写入的统计
+					cookie，刷新后也不会重新加载。
+				</p>
+
+				<label className="mt-3 flex items-center gap-2 text-sm">
+					<input
+						type="checkbox"
+						checked={analyticsBinding.statisticsOn}
+						onChange={(event) =>
+							analyticsBinding.setStatisticsOn(event.target.checked)
+						}
+					/>
+					匿名使用统计
+				</label>
+
+				<div className="mt-4">
+					<label className="block text-sm">
+						<span className="font-medium">测量 ID（可选）</span>
+						<input
+							className="mt-1 w-full max-w-sm rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
+							placeholder="G-XXXXXXXXXX"
+							value={
+								analyticsBinding.idFromDeployment
+									? "由部署配置提供"
+									: analyticsBinding.editableId
+							}
+							disabled={analyticsBinding.idFromDeployment}
+							aria-readonly={analyticsBinding.idFromDeployment}
+							onChange={(event) => {
+								// Persisted immediately: the value is only read when the app
+								// next resolves its configuration.
+								saveId(event.target.value);
+							}}
+						/>
+					</label>
+					<p className="mt-1 text-muted-foreground text-xs">
+						{analyticsBinding.idFromDeployment
+							? "当前测量 ID 由部署配置提供，无法在此处覆盖。"
+							: "留空且部署未提供时，不会加载任何统计脚本。"}
+					</p>
+				</div>
+
+				<PrivacyNotice
+					open={privacyOpen}
+					onToggle={() => setPrivacyOpen((current) => !current)}
+				/>
+			</section>
 
 			<section className={sectionClass}>
 				<h2 className="font-semibold text-xl">备份与安全</h2>

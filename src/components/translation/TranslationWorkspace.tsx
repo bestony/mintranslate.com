@@ -15,10 +15,14 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
+import {
+	createAnalytics,
+	createThrottledSubmit,
+	reportedHost,
+} from "#/lib/analytics/track";
 import { createKeyedLimiters } from "#/lib/call-control/concurrency";
 import { attributeFailure } from "#/lib/connections/attribution";
-import type { Connection } from "#/lib/connections/model";
+import type { Connection, ProviderId } from "#/lib/connections/model";
 import { createModelCaller } from "#/lib/connections/model-caller";
 import { CUSTOM_INSTRUCTION_KEY, STYLE_KEY } from "#/lib/connections/storage";
 import { useConnectionStore } from "#/lib/connections/store";
@@ -138,6 +142,59 @@ export function TranslationWorkspace() {
 	const active: Connection | undefined = store.activeConnection;
 	const activeId = active?.id;
 
+	/**
+	 * Analytics entry point.
+	 *
+	 * Created once; the connection state is read through a closure so the tracker
+	 * does not need rebuilding when a connection is added.
+	 */
+	const analytics = useMemo(
+		() => createAnalytics({ byokConfigured: () => store.activeId !== null }),
+		[store],
+	);
+
+	/**
+	 * Throttled submit reporter.
+	 *
+	 * `translate_submit` fires on every pause in typing; the throttle collapses a
+	 * burst while the terminal events (success/error) are sent unthrottled so the
+	 * funnel keeps exact counts.
+	 */
+	const reportSubmit = useMemo(
+		() =>
+			createThrottledSubmit((event, params) => {
+				if (event === "translate_submit")
+					analytics.track("translate_submit", params);
+			}),
+		[analytics],
+	);
+
+	/**
+	 * Report a language change.
+	 *
+	 * `trigger` distinguishes how the user changed it, which is what tells us
+	 * whether the quick chips or the searchable list is doing the work.
+	 */
+	const reportLanguageChange = useCallback(
+		(options: {
+			readonly side: "source" | "target";
+			readonly from: string;
+			readonly to: string;
+			readonly trigger: "chip" | "search_list" | "swap" | "url";
+		}) => {
+			if (options.from === options.to) return;
+
+			analytics.track("lang_change", {
+				side: options.side,
+				from_lang: options.from,
+				to_lang: options.to,
+				is_auto_detect: options.to === AUTO_DETECT,
+				trigger: options.trigger,
+			});
+		},
+		[analytics],
+	);
+
 	/** Single caller instance: it owns the per-connection limits and flights. */
 	const caller = useMemo(
 		() => createModelCaller({ limiterFor: (id) => limiters.for(id) }),
@@ -164,7 +221,15 @@ export function TranslationWorkspace() {
 	useEffect(() => {
 		if (typeof window === "undefined") return;
 		const restored = fromQueryString(window.location.search);
-		if (restored.sourceLang !== undefined) setSourceLang(restored.sourceLang);
+		if (restored.sourceLang !== undefined) {
+			reportLanguageChange({
+				side: "source",
+				from: AUTO_DETECT,
+				to: restored.sourceLang,
+				trigger: "url",
+			});
+			setSourceLang(restored.sourceLang);
+		}
 		if (
 			restored.targetLang !== undefined &&
 			isTargetLanguage(restored.targetLang)
@@ -172,7 +237,7 @@ export function TranslationWorkspace() {
 			setTargetLang(restored.targetLang);
 		}
 		if (restored.text !== undefined) setText(restored.text);
-	}, []);
+	}, [reportLanguageChange]);
 
 	// Mirror state into the URL. `writeWorkspaceUrl` uses replaceState only.
 	useEffect(() => {
@@ -248,6 +313,17 @@ export function TranslationWorkspace() {
 						setPending(true);
 						setFailure(undefined);
 						setOutput("");
+
+						// Reported from current state: the runner captures the request input
+						// immediately after this callback, so `lastInput` still holds the
+						// previous request at this point.
+						reportSubmit({
+							mode: "text",
+							source_lang: sourceLang,
+							target_lang: targetLang,
+							input_chars: text.length,
+							input_kind: "text",
+						});
 					},
 					onChunk: (_id, delta) => setOutput((current) => current + delta),
 					onSuccess: (_id, result) => {
@@ -255,6 +331,27 @@ export function TranslationWorkspace() {
 						setPending(false);
 						// Feeds the quick-switch chips with the user's real habits.
 						store.noteLanguageUse(targetLang);
+
+						// Terminal event: sent unthrottled, because these counts are the
+						// funnel's denominator. Latency is measured from the request start
+						// recorded in the runner, so the analytics call cannot shift it.
+						const latencyMs =
+							runStartedAt.current === undefined
+								? 0
+								: Date.now() - runStartedAt.current;
+						analytics.track("translate_success", {
+							mode: "text",
+							source_lang: lastInput.current?.sourceLang ?? sourceLang,
+							target_lang: lastInput.current?.targetLang ?? targetLang,
+							provider: (active?.provider ?? "custom") as ProviderId,
+							model: active?.model ?? "",
+							latency_ms: latencyMs,
+							is_streaming: true,
+						});
+						analytics.track("model_in_use", {
+							provider: (active?.provider ?? "custom") as ProviderId,
+							model: active?.model ?? "",
+						});
 
 						// History is written here and only here: `onSuccess` fires for the
 						// final result of a request that was not superseded, so streaming
@@ -282,6 +379,36 @@ export function TranslationWorkspace() {
 							errorType: attribution.type,
 						});
 						setFailure(attribution.summary);
+
+						const provider = (active?.provider ?? "custom") as ProviderId;
+						const model = active?.model ?? "";
+
+						analytics.track("translate_error", {
+							mode: "text",
+							provider,
+							model,
+							error_type: attribution.type,
+						});
+
+						// Cross-origin failures are reported separately, and only when that
+						// is genuinely the attribution: a user cancellation or an inherent
+						// front-end limitation must not skew the provider-compatibility
+						// signal. The host is hashed for custom endpoints by `reportedHost`.
+						if (
+							attribution.type === "cors_or_network" &&
+							active !== undefined
+						) {
+							void reportedHost(
+								active.endpoint,
+								active.provider === "custom",
+							).then((host) => {
+								if (host === undefined) return;
+								analytics.track("cors_blocked", {
+									provider,
+									endpoint_host: host,
+								});
+							});
+						}
 					},
 					onSuperseded: () => {
 						// A newer request is already in flight; it owns the pending flag.
@@ -347,6 +474,11 @@ export function TranslationWorkspace() {
 			targetLang,
 			persistHistory,
 			sourceLang,
+			analytics.track, // Reported from current state: the runner captures the request input
+			// immediately after this callback, so `lastInput` still holds the
+			// previous request at this point.
+			reportSubmit,
+			text.length,
 		],
 	);
 
@@ -369,15 +501,27 @@ export function TranslationWorkspace() {
 	const swap = useCallback(() => {
 		if (!canSwap(sourceLang)) return;
 		const next = swapPair({ source: sourceLang, target: targetLang });
+		reportLanguageChange({
+			side: "source",
+			from: sourceLang,
+			to: next.source,
+			trigger: "swap",
+		});
 		setSourceLang(next.source);
 		setTargetLang(next.target);
 		// Re-translate immediately in the new direction.
 		controller.trigger();
-	}, [controller, sourceLang, targetLang]);
+	}, [controller, sourceLang, targetLang, reportLanguageChange]);
 
 	const pickLanguage = useCallback(
 		(code: string) => {
 			if (picker === "source") {
+				reportLanguageChange({
+					side: "source",
+					from: sourceLang,
+					to: code,
+					trigger: "search_list",
+				});
 				if (code === AUTO_DETECT) {
 					setSourceLang(AUTO_DETECT);
 					setDetected(undefined);
@@ -393,6 +537,12 @@ export function TranslationWorkspace() {
 				}
 			} else if (picker === "target") {
 				if (!isTargetLanguage(code)) return;
+				reportLanguageChange({
+					side: "target",
+					from: targetLang,
+					to: code,
+					trigger: "search_list",
+				});
 				const resolved = resolveTargetConflict(
 					{ source: sourceLang, target: code },
 					[sourceLang],
@@ -403,7 +553,7 @@ export function TranslationWorkspace() {
 			}
 			setPicker(undefined);
 		},
-		[picker, sourceLang, targetLang],
+		[picker, sourceLang, targetLang, reportLanguageChange],
 	);
 
 	// Global shortcuts. The manual path bypasses the debounce by design.

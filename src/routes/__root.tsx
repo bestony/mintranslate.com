@@ -5,6 +5,8 @@ import {
 	Scripts,
 } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { resolveConfig } from "#/lib/analytics/config";
+import { ANALYTICS_SCRIPT_URL } from "#/lib/analytics/loader";
 import { withBase } from "#/lib/base-path";
 import { shouldShowInsecureContextNotice } from "#/lib/secure-context";
 import appCss from "../styles.css?url";
@@ -50,10 +52,28 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 				type: "image/svg+xml",
 				href: withBase("/icon.svg"),
 			},
+			// Declared only when an identifier resolved at build time. An unconfigured
+			// build therefore contains no analytics URL at all, which is what the
+			// build-time gate asserts and what an intranet deployment relies on.
+			...analyticsScript(),
 		],
 	}),
 	shellComponent: RootDocument,
 });
+
+/**
+ * Analytics resource hint, or nothing.
+ *
+ * The loader performs the actual injection; this entry only lets the browser warm
+ * the connection early. It is absent unless the build has an identifier, so an
+ * unconfigured product contains no analytics origin at all.
+ */
+function analyticsScript(): Array<{ rel: string; href: string }> {
+	if (ANALYTICS_SCRIPT_URL === undefined) return [];
+	if (resolveConfig().measurementId === undefined) return [];
+
+	return [{ rel: "dns-prefetch", href: ANALYTICS_SCRIPT_URL }];
+}
 
 /**
  * Whether the page runs in a secure context.
