@@ -33,6 +33,7 @@ import { useConnectionStore } from "#/lib/connections/store";
 import {
 	assemblePrompt,
 	isTranslationStyleId,
+	TRANSLATION_STYLES,
 	type TranslationStyleId,
 } from "#/lib/connections/styles";
 import {
@@ -42,11 +43,13 @@ import {
 	setFavorite,
 	writeRecord,
 } from "#/lib/history/db";
+import { modeFromUrl, urlValueForMode, type WorkspaceMode } from "#/lib/image";
 import {
 	AUTO_DETECT,
 	canSwap,
 	DEFAULT_TARGET,
 	isTargetLanguage,
+	languageByCode,
 	languageName,
 	quickLanguages,
 	resolveTargetConflict,
@@ -66,6 +69,7 @@ import {
 	truncationNotice,
 } from "#/lib/translation/result";
 import { fromQueryString, writeWorkspaceUrl } from "#/lib/url-state";
+import { ImageTranslationMode } from "../image/ImageTranslationMode";
 import { FeedbackPanel } from "../output/FeedbackPanel";
 import { SearchLookupButton } from "../output/SearchLookupButton";
 import { ShareMenu } from "../output/ShareMenu";
@@ -180,6 +184,16 @@ export function TranslationWorkspace() {
 	}, [detected]);
 	const [notice, setNotice] = useState<string | undefined>(undefined);
 	const [failure, setFailure] = useState<string | undefined>(undefined);
+	/**
+	 * Workspace mode. Seeded from the URL so a link carrying the image value opens
+	 * image mode directly; anything unrecognised resolves to text.
+	 */
+	const [mode, setMode] = useState<WorkspaceMode>(() =>
+		typeof window === "undefined"
+			? "text"
+			: modeFromUrl(fromQueryString(window.location.search).mode),
+	);
+
 	const [picker, setPicker] = useState<"source" | "target" | undefined>(
 		undefined,
 	);
@@ -327,8 +341,13 @@ export function TranslationWorkspace() {
 	// Mirror state into the URL. `writeWorkspaceUrl` uses replaceState only.
 	useEffect(() => {
 		if (typeof window === "undefined") return;
-		writeWorkspaceUrl({ sourceLang, targetLang, text, mode: "translate" });
-	}, [sourceLang, targetLang, text]);
+		writeWorkspaceUrl({
+			sourceLang,
+			targetLang,
+			text,
+			mode: urlValueForMode(mode),
+		});
+	}, [sourceLang, targetLang, text, mode]);
 
 	/**
 	 * Write one finished translation to local history.
@@ -739,6 +758,73 @@ export function TranslationWorkspace() {
 	/** Whether the source side is on auto-detect, which is also a selected state. */
 	const sourceIsAuto = sourceLang === AUTO_DETECT;
 
+	// Image mode. Rendered as its own subtree with the same chrome, so the text-mode
+	// markup below stays byte-identical and the two modes never share state.
+	if (mode === "images") {
+		return (
+			<div className="flex min-h-0 flex-1 flex-col">
+				<div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:p-6">
+					<div className="flex flex-wrap items-center gap-2 border-b border-border pb-4">
+						<div
+							className="flex items-center gap-2"
+							role="toolbar"
+							aria-label="翻译模式"
+						>
+							{(["text", "images"] as const).map((candidate) => (
+								<button
+									key={candidate}
+									type="button"
+									aria-pressed={mode === candidate}
+									className={
+										mode === candidate
+											? "min-h-11 rounded-sm bg-primary-strong px-4 text-primary-foreground text-xs"
+											: "min-h-11 rounded-sm border border-border px-4 text-xs"
+									}
+									onClick={() => setMode(candidate)}
+								>
+									{candidate === "text" ? "文本翻译" : "图片翻译"}
+								</button>
+							))}
+						</div>
+						{active ? (
+							<span className="text-muted-foreground text-xs">
+								使用中：{active.name}
+							</span>
+						) : (
+							<Link
+								to="/settings"
+								className="nav-link min-h-11 inline-flex items-center text-xs underline"
+							>
+								未配置连接 — 去设置
+							</Link>
+						)}
+					</div>
+
+					<ImageTranslationMode
+						connection={active}
+						apiKey={active ? store.keyFor(active.id) : ""}
+						sourceLang={sourceLang}
+						targetLang={targetLang}
+						sourceLanguageLabel={languageByCode(sourceLang)?.nameZh}
+						targetLanguageLabel={
+							languageByCode(targetLang)?.nameZh ?? targetLang
+						}
+						styleLabel={
+							TRANSLATION_STYLES.find((entry) => entry.id === promptStyle)
+								?.label
+						}
+						styleDescription={
+							TRANSLATION_STYLES.find((entry) => entry.id === promptStyle)
+								?.description
+						}
+						customInstruction={customInstruction}
+						analytics={analytics}
+					/>
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			{/* Layout: single column on mobile, a three-column grid (source / swap axis /
@@ -748,17 +834,34 @@ export function TranslationWorkspace() {
 			<div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:grid md:min-h-0 md:grid-cols-[1fr_auto_1fr] md:items-stretch md:gap-x-6 md:gap-y-4 md:p-6">
 				<div className="md:col-span-3">
 					{/* The toolbar carries only what the workspace needs at a glance.
-					    Shortcut hints moved to the footer and a tooltip, and the install
-					    entry moved to the header, so this row stays about the task. */}
+				    Shortcut hints moved to the footer and a tooltip, and the install
+				    entry moved to the header, so this row stays about the task. */}
 					<div className="flex flex-wrap items-center gap-2 border-b border-border pb-4">
-						<button
-							type="button"
-							className="min-h-11 rounded-sm bg-primary-strong px-4 text-primary-foreground text-xs"
+						{/* Mode switch: same workspace, same header, same language pair.
+					    No new navigation entry and no new route. */}
+						<div
+							className="flex items-center gap-2"
+							role="toolbar"
+							aria-label="翻译模式"
 						>
-							文本翻译
-						</button>
+							{(["text", "images"] as const).map((candidate) => (
+								<button
+									key={candidate}
+									type="button"
+									aria-pressed={mode === candidate}
+									className={
+										mode === candidate
+											? "min-h-11 rounded-sm bg-primary-strong px-4 text-primary-foreground text-xs"
+											: "min-h-11 rounded-sm border border-border px-4 text-xs"
+									}
+									onClick={() => setMode(candidate)}
+								>
+									{candidate === "text" ? "文本翻译" : "图片翻译"}
+								</button>
+							))}
+						</div>
 						{/* One control, two states: an actionable link when nothing is
-						    configured, and a plain label once a connection is active. */}
+					    configured, and a plain label once a connection is active. */}
 						{active ? (
 							<span className="text-muted-foreground text-xs">
 								使用中：{active.name}
