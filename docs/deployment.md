@@ -86,7 +86,7 @@ Publish `dist/` as-is. It contains only static files:
 ```
 dist/
   _shell.html            pre-rendered application shell
-  assets/                JS, CSS, self-hosted fonts
+  assets/                JS, CSS
   manifest.webmanifest   web app manifest
   icon-192.png
   icon-512.png
@@ -251,28 +251,186 @@ node scripts/check-external-refs.mjs dist   # scans HTML, CSS, JS, JSON
 
 ### Offline (no network at all)
 
-The application shell and its assets load with no network. Fonts and icons are
-self-hosted and bundled, so the interface renders completely rather than falling
-back to substitute fonts or missing icons.
+The application shell and its assets load with no network. The interface uses the
+system font stack and bundles its icons, so text renders immediately and no icon is
+missing.
 
-Offline caching of the shell is delivered by the `pwa-offline` change. This
-deployment baseline only guarantees that nothing in the build needs an external
+Offline caching of the shell is delivered by the service worker, which precaches
+the shell and its assets on first visit. Nothing in the build needs an external
 network to load.
 
 ---
 
 ## 6. Connection requirements for an intranet model
 
-The model endpoint is contacted **directly by the browser**. MinTranslate
-provides no reverse proxy, gateway or relay, so the model side must supply two
-things:
+The model endpoint is contacted **directly by the browser**. MinTranslate provides
+no reverse proxy, gateway or relay, so the model side must supply two things:
 
-1. **HTTPS** (with a certificate the client trusts). A page served over HTTPS
-   cannot call an `http://` endpoint — the browser blocks it as mixed content.
-2. **CORS headers** allowing the application's origin. The endpoint is a
-   different origin, so the browser sends a preflight request first.
+1. **HTTPS**, with a certificate the client trusts. A page served over HTTPS cannot
+   call an `http://` endpoint — the browser blocks it as mixed content, before the
+   request is sent.
+2. **An origin allowlist** covering the address the application is served from. The
+   endpoint is a different origin, so the browser sends a preflight request first.
 
-Both are required. HTTPS alone still fails CORS; CORS alone still fails mixed
-content. The `intranet-deployment` change documents the per-framework
-configuration for Ollama, vLLM, TGI and Xinference, and the connection test that
-tells these four failure modes apart.
+Both are required. HTTPS alone still fails the origin check; an allowlist alone
+still fails the mixed-content check.
+
+If the model side cannot provide a trusted HTTPS endpoint **and** allow the
+application's origin, this application **cannot** reach it. There is no middle
+layer to work around that: no reverse proxy, no gateway, no relay is provided or
+distributed, and the API key travels from the browser straight to the endpoint.
+
+### Telling the four failure modes apart
+
+The browser does not say why a cross-origin request failed — a refused origin, an
+untrusted certificate and an unreachable host all arrive as
+`TypeError: Failed to fetch`. The application therefore decides what it can before
+sending, and states the rest as possibilities rather than conclusions:
+
+| Situation | How it is reported |
+| --- | --- |
+| Page is HTTPS, endpoint is not | `mixed content`, decided **before** any request is sent |
+| Origin not allowed, certificate untrusted, or host unreachable | one combined cause plus a checklist covering all three |
+| Endpoint names a certificate problem in its error text | `certificate`, with certificate-specific steps |
+
+The combined case is deliberate: asserting a specific cause there would be a guess,
+and a wrong guess sends the deployer to the wrong side of the connection.
+
+### Per-framework configuration
+
+Allow the application's origin. Replace `https://app.internal` with the address you
+actually serve the application from.
+
+**Ollama**
+
+```bash
+# Comma-separated; no trailing slash. Wildcards are not supported here.
+OLLAMA_ORIGINS=https://app.internal ollama serve
+```
+
+HTTPS is not provided by Ollama itself; terminate TLS in front of it (see the Nginx
+example below) and point the application at the `https://` address.
+
+**vLLM**
+
+```bash
+vllm serve <model> --allowed-origins '["https://app.internal"]'
+```
+
+`--allowed-origins` takes a JSON array. Add TLS termination in front of vLLM, or
+pass `--ssl-keyfile` / `--ssl-certfile` to have it serve HTTPS directly.
+
+**LM Studio**
+
+In the server settings, enable **CORS** and add the application's origin to the
+allowed list. Enable HTTPS in the same panel if you have a certificate, otherwise
+terminate TLS in front of it.
+
+**Nginx in front of any of the above**
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name model.internal;
+
+    ssl_certificate     /etc/ssl/certs/model.internal.crt;
+    ssl_certificate_key /etc/ssl/private/model.internal.key;
+
+    location / {
+        add_header Access-Control-Allow-Origin  "https://app.internal" always;
+        add_header Access-Control-Allow-Headers "authorization, content-type" always;
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+
+        # The browser sends a preflight before the real request; answering it here
+        # is what makes the endpoint reachable at all.
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Max-Age 86400;
+            return 204;
+        }
+
+        proxy_pass http://127.0.0.1:11434;
+    }
+}
+```
+
+### Verifying the model side without a browser
+
+Each command below inspects the two things the browser will check. Run them from
+the machine that will use the application, replacing the two placeholders.
+
+**1. Does the endpoint allow the application's origin?**
+
+```bash
+curl -sI -X OPTIONS https://model.internal/v1/chat/completions \
+  -H 'Origin: https://app.internal' \
+  -H 'Access-Control-Request-Method: POST' \
+  -H 'Access-Control-Request-Headers: authorization,content-type' \
+  | grep -i '^access-control-allow'
+```
+
+Expected: `access-control-allow-origin` echoing `https://app.internal` (or `*`).
+No output means the preflight would fail.
+
+**2. Is the certificate trusted by this client?**
+
+```bash
+curl -sI https://model.internal/v1/models
+```
+
+Success means the certificate chain validated. `SSL certificate problem` means it
+did not — check the CA, the hostname, and the expiry date. Add `-v` to see the
+chain when diagnosing.
+
+**3. Is the host reachable at all?**
+
+```bash
+curl -sI --max-time 5 https://model.internal/v1/models | head -1
+```
+
+No output, or a timeout, separates "unreachable" from "reachable but refusing",
+which the browser cannot distinguish for you.
+
+Add `-k` **only** to confirm a suspicion that the certificate is the problem. A
+request made with `-k` proved something about connectivity, not about whether the
+browser will accept the endpoint.
+
+### Building for an air-gapped network
+
+1. **Do not set `VITE_GA_MEASUREMENT_ID`.** Leave it empty. The build then contains
+   no analytics reference.
+2. Optionally set `VITE_GA_ENABLED=false` as a second, build-time guarantee.
+3. Build and check the result:
+
+   ```bash
+   pnpm build
+   ```
+
+   `pnpm build` runs the external-reference gate. It fails on any resource the
+   browser would load from another origin, so a passing build is the evidence that
+   nothing is fetched from outside. It also reports third-party URL *strings* that
+   are not fetched (documentation links inside bundled SDKs, default endpoint
+   constants) — those are informational and do not fail the build.
+4. Serve over HTTPS, so installation and offline caching work.
+5. Point users at their own intranet endpoint in settings.
+
+The script can be run on its own against any build output:
+
+```bash
+node scripts/check-external-refs.mjs dist
+```
+
+### What "no external requests" does and does not mean
+
+After loading the application, the network panel shows requests to **the
+application's own origin only**, plus whatever endpoint the user configured. There
+is no request to a font service, an icon CDN, an analytics endpoint or any other
+third party.
+
+Two things the build does contain, and neither causes a request on its own:
+
+- **Endpoint constants for the public providers** (for example `api.openai.com`) and
+  the search-engine addresses used by the lookup action. These are data, reached
+  only when a user configures that provider or clicks that action — which in an
+  air-gapped network will simply fail.
+- **Documentation links inside bundled provider SDKs.** They are strings in the
+  bundle, never fetched.
