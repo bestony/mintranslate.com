@@ -4,6 +4,7 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 
 import viteReact from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { VitePWA } from "vite-plugin-pwa";
 
 import { normalizeBasePath, toViteBase } from "./src/lib/base-path";
 
@@ -19,6 +20,77 @@ const INTERMEDIATE_OUTPUT_DIR = ".tanstack/ssr";
 // Printed once per build so the effective base path is verifiable from build
 // output, and so a misconfigured value is visible before the build proceeds.
 console.log(`[mintranslate] base path: ${basePath}`);
+
+/**
+ * Service worker output file name.
+ *
+ * Kept at the base path root so its scope is the application itself. A worker
+ * placed deeper would only control a sub-tree, and one placed at the site root
+ * would claim paths belonging to other applications on the same origin.
+ */
+const SERVICE_WORKER_FILENAME = "sw.js";
+
+/** Web app manifest output file name. */
+const MANIFEST_FILENAME = "manifest.webmanifest";
+
+/**
+ * Web app manifest.
+ *
+ * Generated here rather than shipped as a static file in `public/`: a static copy
+ * would be a second source of truth alongside the cache manifest this plugin
+ * produces, and the two would drift (icons, `start_url` parameters, `scope`).
+ * Keeping one source means the icon list is guaranteed to be the list that also
+ * gets pre-cached.
+ */
+/**
+ * Manifest content.
+ *
+ * Typed from the plugin's own option type so a field the plugin does not accept
+ * is a compile error rather than a silently ignored entry.
+ */
+const webAppManifest: NonNullable<
+	NonNullable<Partial<Parameters<typeof VitePWA>[0]>>["manifest"]
+> = {
+	name: "MinTranslate",
+	short_name: "MinTranslate",
+	description:
+		"A self-hosted AI translation workbench. Bring your own model endpoint; text, images, documents and webpages stay under your control.",
+	lang: "zh-CN",
+	// `dir` is omitted deliberately: the manifest spec's default is `auto`, and the
+	// plugin's option type does not accept that value. Omitting it is equivalent.
+
+	// Relative so the value resolves under any mount point; the `op` parameter
+	// restores the mode the user last had open.
+	start_url: "./?op=translate",
+	scope: "./",
+	display: "standalone",
+	orientation: "any",
+	theme_color: "#2f6a4a",
+	background_color: "#e7f3ec",
+	icons: [
+		// `any` and `maskable` are separate entries on purpose: a combined
+		// `any maskable` entry produces a badly cropped icon on platforms that
+		// apply a mask.
+		{
+			src: "./icon-192.png",
+			sizes: "192x192",
+			type: "image/png",
+			purpose: "any",
+		},
+		{
+			src: "./icon-512.png",
+			sizes: "512x512",
+			type: "image/png",
+			purpose: "any",
+		},
+		{
+			src: "./icon-512-maskable.png",
+			sizes: "512x512",
+			type: "image/png",
+			purpose: "maskable",
+		},
+	],
+};
 
 export default defineConfig({
 	base: toViteBase(basePath),
@@ -52,5 +124,32 @@ export default defineConfig({
 		tailwindcss(),
 		tanstackStart({ spa: { enabled: true } }),
 		viteReact(),
+		VitePWA({
+			registerType: "prompt",
+			// The application registers the worker itself, in the shell, so it can
+			// gate registration on a secure context and drive the update prompt.
+			injectRegister: false,
+			// Dev builds do not register a worker: a cached shell would hide code
+			// changes while developing.
+			devOptions: { enabled: false },
+			filename: SERVICE_WORKER_FILENAME,
+			manifestFilename: MANIFEST_FILENAME,
+			manifest: webAppManifest,
+			// The shell must not be pinned: a stale cached shell would keep serving
+			// an old build after a deployment.
+			workbox: {
+				globPatterns: ["**/*.{js,css,html,woff2,png,svg,webmanifest}"],
+				// SPA navigations fall back to the shell so client routing can take over.
+				navigateFallback: `${toViteBase(basePath)}_shell.html`,
+				// Only same-origin static assets may be stored. Cross-origin requests —
+				// model endpoints and analytics alike — must pass straight through:
+				// caching them would create a second copy of data the application
+				// promises to keep local or never store.
+				navigateFallbackDenylist: [/\/(?:api|assets\/.*\.json)/],
+				cleanupOutdatedCaches: true,
+				clientsClaim: false,
+				skipWaiting: false,
+			},
+		}),
 	],
 });
