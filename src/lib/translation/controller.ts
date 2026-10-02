@@ -21,6 +21,15 @@ import { debounce } from "../call-control/debounce";
 import { createLatestCall } from "../call-control/latest-call";
 import { throttle } from "../call-control/throttle";
 import { logger, newRequestId, sourceText } from "../logger";
+import type {
+	GlossaryVersionProvider,
+	MemoryContext,
+	TranslationMemoryPort,
+} from "../translation-memory";
+import {
+	createTranslationMemoryPreference,
+	getDefaultTranslationMemoryStore,
+} from "../translation-memory";
 
 /** Auto-trigger delay, fixed by the PRD and the upstream downstream contract. */
 export const DEBOUNCE_MS = 600;
@@ -87,6 +96,16 @@ export interface ControllerDeps {
 	readonly secrets?: readonly string[];
 	/** Injectable clock for deterministic tests. */
 	readonly now?: () => number;
+	/** Optional memory port. When omitted, the browser-local store is lazy-loaded. */
+	readonly memory?: TranslationMemoryPort;
+	/** Injectable glossary version provider; defaults to the contract's "none". */
+	readonly glossaryVersion?: GlossaryVersionProvider;
+	/** Current prompt style, used as part of the memory key. */
+	readonly styleId?: string | (() => string | Promise<string>);
+	/** Current model tier, used as part of the memory key. */
+	readonly tier?: string | (() => string | Promise<string>);
+	/** Memory switch. A provider avoids reading browser storage during render. */
+	readonly memoryEnabled?: boolean | (() => boolean | Promise<boolean>);
 }
 
 /** The controller surface used by the workspace. */
@@ -124,6 +143,62 @@ export function createTranslationController(
 	const { run, callbacks } = deps;
 	const secrets = deps.secrets ?? [];
 	const now = deps.now ?? (() => Date.now());
+	const preference = createTranslationMemoryPreference();
+	const configuredMemory = deps.memory;
+
+	async function readProvider<T>(
+		value: T | (() => T | Promise<T>) | undefined,
+		fallback: T,
+	): Promise<T> {
+		if (value === undefined) return fallback;
+		try {
+			return typeof value === "function"
+				? await (value as () => T | Promise<T>)()
+				: value;
+		} catch {
+			return fallback;
+		}
+	}
+
+	async function memoryIsEnabled(): Promise<boolean> {
+		if (deps.memoryEnabled !== undefined) {
+			return readProvider(deps.memoryEnabled, true);
+		}
+		// `start` is reached from an effect or a user gesture in the application,
+		// so this is the first point at which reading localStorage is permitted.
+		preference.mount();
+		return preference.isEnabled();
+	}
+
+	async function memoryPort(): Promise<TranslationMemoryPort | undefined> {
+		if (configuredMemory !== undefined) return configuredMemory;
+		return getDefaultTranslationMemoryStore();
+	}
+
+	async function memoryContext(
+		input: TranslationInput,
+	): Promise<MemoryContext> {
+		let glossaryVersion = "none";
+		if (deps.glossaryVersion !== undefined) {
+			try {
+				glossaryVersion = await deps.glossaryVersion({
+					sl: input.sourceLang,
+					tl: input.targetLang,
+				});
+			} catch {
+				glossaryVersion = "none";
+			}
+		}
+		const styleId = await readProvider(deps.styleId, "default");
+		const tier = await readProvider(deps.tier, "balanced");
+		return {
+			sl: input.sourceLang,
+			tl: input.targetLang,
+			glossaryVersion,
+			styleId,
+			tier,
+		};
+	}
 
 	const latest = createLatestCall();
 	/** The key of the request most recently *started*, for suppression. */
@@ -185,6 +260,50 @@ export function createTranslationController(
 		void latest
 			.run(async (signal) => {
 				let firstChunkAt: number | undefined;
+				let memory: TranslationMemoryPort | undefined;
+				let memoryKeyContext: MemoryContext | undefined;
+				let memoryHit = false;
+
+				if (await memoryIsEnabled()) {
+					memory = await memoryPort();
+					if (memory !== undefined) {
+						memoryKeyContext = await memoryContext(input);
+						try {
+							const hit = await memory.findTranslation(
+								input.text,
+								memoryKeyContext,
+							);
+							if (hit !== undefined && !signal.aborted) {
+								memoryHit = true;
+								logger.info(
+									"translation-memory.controller.hit",
+									{ outputLength: hit.length },
+									{ requestId, secrets: secretsForLog },
+								);
+								return {
+									result: { text: hit },
+									firstChunkAt,
+									startedAt,
+									memory,
+									memoryKeyContext,
+									memoryHit,
+								};
+							}
+						} catch (error) {
+							// A storage failure is a miss. The model remains usable.
+							logger.warn(
+								"translation-memory.controller.lookup-failed",
+								{ error },
+								{ requestId, secrets: secretsForLog },
+							);
+						}
+					}
+				}
+
+				// A slow memory lookup can finish after a newer request has already
+				// replaced this one. Do not fall through and start a model call for the
+				// abandoned input; `latest.run` will classify this as superseded.
+				if (signal.aborted) throw new Error("superseded");
 
 				const result = await run({
 					requestId,
@@ -196,7 +315,14 @@ export function createTranslationController(
 					},
 				});
 
-				return { result, firstChunkAt, startedAt };
+				return {
+					result,
+					firstChunkAt,
+					startedAt,
+					memory,
+					memoryKeyContext,
+					memoryHit,
+				};
 			})
 			.then((outcome) => {
 				if (outcome.kind === "superseded") {
@@ -210,7 +336,14 @@ export function createTranslationController(
 					return;
 				}
 
-				const { result, firstChunkAt, startedAt: begin } = outcome.value;
+				const {
+					result,
+					firstChunkAt,
+					startedAt: begin,
+					memory,
+					memoryKeyContext,
+					memoryHit,
+				} = outcome.value;
 				const ttftMs =
 					firstChunkAt === undefined ? undefined : firstChunkAt - begin;
 
@@ -227,6 +360,29 @@ export function createTranslationController(
 				);
 
 				callbacks.onSuccess(requestId, result.text, ttftMs);
+
+				if (
+					!memoryHit &&
+					memory !== undefined &&
+					memoryKeyContext !== undefined
+				) {
+					void memory
+						.writeTranslation(input.text, result.text, memoryKeyContext)
+						.then((records) => {
+							logger.info(
+								"translation-memory.controller.write",
+								{ count: records.length, outputLength: result.text.length },
+								{ requestId, secrets: secretsForLog },
+							);
+						})
+						.catch((error: unknown) => {
+							logger.warn(
+								"translation-memory.controller.write-failed",
+								{ error },
+								{ requestId, secrets: secretsForLog },
+							);
+						});
+				}
 			})
 			.catch((error: unknown) => {
 				logger.error(
