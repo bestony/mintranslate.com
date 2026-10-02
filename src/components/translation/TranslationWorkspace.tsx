@@ -878,10 +878,9 @@ export function TranslationWorkspace() {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			{/* Layout: single column on mobile, a three-column grid (source / swap axis /
-			    target) from md up. The rows are left to stretch on purpose: the panels
-			    size themselves from the viewport, and stretching is what lets them use
-			    the free height instead of leaving it blank at the bottom. */}
-			<div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:grid md:min-h-0 md:grid-cols-[1fr_auto_1fr] md:items-stretch md:gap-x-6 md:gap-y-4 md:p-6">
+			    target) from md up. The toolbar row sizes to content (auto), and the
+			    panels take the remaining height (1fr) so they fill the viewport. */}
+			<div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:grid md:min-h-0 md:grid-cols-[1fr_auto_1fr] md:grid-rows-[auto_1fr] md:items-stretch md:gap-x-6 md:gap-y-4 md:p-6">
 				<div className="md:col-span-3">
 					{/* The toolbar carries only what the workspace needs at a glance.
 				    Shortcut hints moved to the footer and a tooltip, and the install
