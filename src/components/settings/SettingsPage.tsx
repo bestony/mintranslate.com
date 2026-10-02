@@ -1,0 +1,415 @@
+/**
+ * Settings page.
+ *
+ * Composes the connection list, the per-connection form, and the tier and style
+ * sections. All persistence and rule enforcement lives in the connection store;
+ * this component only renders and dispatches.
+ */
+
+import { useState } from "react";
+import {
+	defaultConnectionName,
+	type ModelTier,
+	PROVIDER_IDS,
+	type ProviderId,
+} from "#/lib/connections/model";
+import { presetDefaults, presetFor } from "#/lib/connections/presets";
+import { exportConfiguration } from "#/lib/connections/storage";
+import { useConnectionStore } from "#/lib/connections/store";
+import {
+	isTranslationStyleId,
+	MAX_CUSTOM_INSTRUCTION_LENGTH,
+	TRANSLATION_STYLES,
+	type TranslationStyleId,
+} from "#/lib/connections/styles";
+import { createConnectionTestController } from "#/lib/connections/test-controller";
+import { describeTierTarget, resolveTier } from "#/lib/connections/tiers";
+import { maskSecret } from "#/lib/credentials/redact";
+import { ConnectionForm, PresetHint } from "./ConnectionForm";
+
+const sectionClass = "island-shell mt-6 rounded-xl p-5";
+const buttonClass =
+	"rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50";
+const ghostButtonClass = "rounded-md border border-input px-3 py-2 text-sm";
+
+/** Tier and prompt-style settings. */
+function BehaviourSettings({
+	tier,
+	onTierChange,
+	style,
+	onStyleChange,
+	customInstruction,
+	onCustomInstructionChange,
+	instructionNotice,
+	usableConnections,
+}: {
+	readonly tier: ModelTier;
+	readonly onTierChange: (tier: ModelTier) => void;
+	readonly style: TranslationStyleId;
+	readonly onStyleChange: (style: TranslationStyleId) => void;
+	readonly customInstruction: string;
+	readonly onCustomInstructionChange: (value: string) => void;
+	readonly instructionNotice?: string;
+	readonly usableConnections: ReturnType<
+		typeof useConnectionStore
+	>["usableConnections"];
+}) {
+	return (
+		<section className={sectionClass}>
+			<h2 className="font-semibold text-xl">翻译行为</h2>
+
+			<div className="mt-4">
+				<p className="font-medium text-sm">模型档位</p>
+				<p className="mt-1 text-muted-foreground text-xs">
+					档位只在你已配置并测试通过的连接中选择；未配置的档位会明确提示，不会静默改用另一档。
+				</p>
+				<div className="mt-2 flex flex-wrap gap-4 text-sm">
+					{(["advanced", "fast"] as ModelTier[]).map((option) => {
+						const resolution = resolveTier(option, usableConnections);
+						return (
+							<label key={option} className="flex items-center gap-2">
+								<input
+									type="radio"
+									name="tier"
+									checked={tier === option}
+									onChange={() => onTierChange(option)}
+								/>
+								{option === "advanced" ? "高级" : "快速"}
+								<span className="text-muted-foreground text-xs">
+									·{" "}
+									{resolution.kind === "resolved"
+										? `${resolution.connection.name}（${resolution.connection.model}）${resolution.derived ? " · 自动推导" : ""}`
+										: resolution.reason}
+								</span>
+							</label>
+						);
+					})}
+				</div>
+				<p className="mt-2 text-muted-foreground text-xs">
+					当前「{tier === "advanced" ? "高级" : "快速"}」档使用：
+					{describeTierTarget(tier, usableConnections)}
+				</p>
+			</div>
+
+			<div className="mt-6">
+				<p className="font-medium text-sm">翻译风格</p>
+				<div className="mt-2 flex flex-wrap gap-2">
+					{TRANSLATION_STYLES.map((entry) => (
+						<button
+							key={entry.id}
+							type="button"
+							title={entry.description}
+							className={
+								style === entry.id
+									? "rounded-full border border-primary bg-primary px-3 py-1 text-primary-foreground text-xs"
+									: "rounded-full border border-input px-3 py-1 text-xs"
+							}
+							onClick={() => onStyleChange(entry.id)}
+						>
+							{entry.label}
+						</button>
+					))}
+				</div>
+				<p className="mt-2 text-muted-foreground text-xs">
+					{TRANSLATION_STYLES.find((entry) => entry.id === style)?.description}
+				</p>
+			</div>
+
+			<div className="mt-6">
+				<label className="block">
+					<span className="font-medium text-sm">自定义附加指令（可选）</span>
+					<textarea
+						className="mt-1 h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+						value={customInstruction}
+						maxLength={MAX_CUSTOM_INSTRUCTION_LENGTH + 1}
+						onChange={(event) => onCustomInstructionChange(event.target.value)}
+					/>
+				</label>
+				<p className="mt-1 text-muted-foreground text-xs">
+					{customInstruction.length} / {MAX_CUSTOM_INSTRUCTION_LENGTH}{" "}
+					字符。该指令只会附加到 用户消息侧，不会覆盖应用自身的系统级约束。
+				</p>
+				{instructionNotice && (
+					<p className="mt-1 text-destructive text-xs">{instructionNotice}</p>
+				)}
+			</div>
+		</section>
+	);
+}
+
+export function SettingsPage() {
+	const store = useConnectionStore();
+	const [editingId, setEditingId] = useState<string | null>(null);
+	const [exportIncludeKeys, setExportIncludeKeys] = useState(false);
+	const [exportNotice, setExportNotice] = useState<string | undefined>(
+		undefined,
+	);
+	const [clearConfirming, setClearConfirming] = useState(false);
+	const [instructionNotice, setInstructionNotice] = useState<
+		string | undefined
+	>(undefined);
+	const [style, setStyle] = useState<TranslationStyleId>("free");
+	const [customInstruction, setCustomInstruction] = useState("");
+	// One controller for the page: it owns per-connection pacing and lets this
+	// component abort an in-flight test when the user switches or deletes.
+	const [testController] = useState(() => createConnectionTestController());
+
+	const currentId = editingId ?? store.connections[0]?.id ?? null;
+	const current = store.connections.find(
+		(connection) => connection.id === currentId,
+	);
+
+	function addConnection(provider: ProviderId) {
+		const id = store.createFromPreset(provider);
+		setEditingId(id);
+	}
+
+	function changeProvider(provider: ProviderId) {
+		if (!current) return;
+		// The endpoint is about to be repointed, so any running test for it is
+		// testing a target the user has already left.
+		testController.abort(current.id);
+		// Selecting a preset fills the endpoint and first suggested model, so the
+		// user only has to supply a key (spec `provider-connections`).
+		const defaults = presetDefaults(provider);
+		const label = presetFor(provider)?.label ?? "自定义";
+		store.update(current.id, {
+			provider,
+			endpoint: defaults.endpoint,
+			model: defaults.models[0] ?? "",
+			capabilities: defaults.capabilities,
+			name: defaultConnectionName(label, defaults.models[0] ?? ""),
+		});
+	}
+
+	function activateCurrent() {
+		if (!current) return;
+		const outcome = store.activate(current.id);
+		if (!outcome.ok) setExportNotice(outcome.reason);
+		else setExportNotice(undefined);
+	}
+
+	function runExport() {
+		if (exportIncludeKeys) {
+			// Keys require an explicit second confirmation before they leave the app.
+			const confirmed = window.confirm(
+				"导出的内容将包含明文 API Key，请确认你了解风险。继续导出？",
+			);
+			if (!confirmed) return;
+		}
+		const payload = exportConfiguration(store.connections, exportIncludeKeys);
+		const blob = new Blob([payload], { type: "application/json" });
+		const url = URL.createObjectURL(blob);
+		const anchor = document.createElement("a");
+		anchor.href = url;
+		anchor.download = "mintranslate-connections.json";
+		anchor.click();
+		URL.revokeObjectURL(url);
+		setExportNotice(
+			exportIncludeKeys ? "已导出（含密钥）。" : "已导出（不含密钥）。",
+		);
+	}
+
+	function clearKeys() {
+		if (!clearConfirming) {
+			setClearConfirming(true);
+			return;
+		}
+		store.clearAllKeys();
+		setClearConfirming(false);
+		setExportNotice("已清除所有密钥。");
+	}
+
+	function updateInstruction(value: string) {
+		// Reject rather than truncate, so the user is told their text was not
+		// fully accepted (spec `prompt-styles`).
+		if (value.length > MAX_CUSTOM_INSTRUCTION_LENGTH) {
+			setInstructionNotice(
+				`自定义指令上限为 ${MAX_CUSTOM_INSTRUCTION_LENGTH} 个字符，超出部分未被接受。`,
+			);
+			setCustomInstruction(value.slice(0, MAX_CUSTOM_INSTRUCTION_LENGTH));
+			return;
+		}
+		setInstructionNotice(undefined);
+		setCustomInstruction(value);
+	}
+
+	return (
+		<>
+			{store.loadWarning && (
+				<p className="mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+					{store.loadWarning}
+				</p>
+			)}
+
+			<section className={sectionClass}>
+				<h2 className="font-semibold text-xl">模型连接</h2>
+				<div className="mt-2">
+					<PresetHint />
+				</div>
+
+				<div className="mt-4 flex flex-wrap gap-2">
+					{store.connections.map((connection) => (
+						<button
+							key={connection.id}
+							type="button"
+							className={
+								connection.id === currentId
+									? "rounded-md border border-primary bg-primary px-3 py-2 text-primary-foreground text-sm"
+									: ghostButtonClass
+							}
+							onClick={() => {
+								// Switching away abandons any test for the previous
+								// connection, so its result cannot land on the new one.
+								if (currentId !== null && currentId !== connection.id) {
+									testController.abort(currentId);
+								}
+								setEditingId(connection.id);
+							}}
+						>
+							{connection.name}
+							{connection.id === store.activeId && " · 使用中"}
+						</button>
+					))}
+					<select
+						className={ghostButtonClass}
+						value=""
+						onChange={(event) => {
+							if (event.target.value !== "")
+								addConnection(event.target.value as ProviderId);
+						}}
+					>
+						<option value="">+ 新增连接…</option>
+						{PROVIDER_IDS.map((id) => (
+							<option key={id} value={id}>
+								{presetFor(id)?.label ?? id}
+							</option>
+						))}
+					</select>
+				</div>
+
+				{current ? (
+					<div className="mt-5">
+						<ConnectionForm
+							connection={current}
+							apiKey={store.keyFor(current.id)}
+							onChange={(edit) => store.update(current.id, edit)}
+							onProviderChange={changeProvider}
+							onKeyChange={(key) => store.setKey(current.id, key)}
+							testController={testController}
+							onTested={(status, detail) =>
+								store.setStatus(current.id, status, detail)
+							}
+						/>
+						<div className="mt-4 flex flex-wrap gap-3">
+							<button
+								type="button"
+								className={buttonClass}
+								onClick={activateCurrent}
+								disabled={current.id === store.activeId}
+							>
+								{current.id === store.activeId ? "当前使用中" : "设为当前模型"}
+							</button>
+							<button
+								type="button"
+								className={ghostButtonClass}
+								onClick={() => {
+									// Abort first: a test still running for a deleted
+									// connection must not write back a status.
+									testController.abort(current.id);
+									store.remove(current.id);
+									setEditingId(null);
+								}}
+							>
+								删除此连接
+							</button>
+						</div>
+					</div>
+				) : (
+					<p className="mt-4 text-muted-foreground text-sm">
+						还没有任何连接。选择一个预设开始配置；未配置连接时应用仍可正常使用，只是无法翻译。
+					</p>
+				)}
+
+				{!store.activeId && store.connections.length > 0 && (
+					<p className="mt-3 text-amber-700 text-sm dark:text-amber-300">
+						当前没有生效的连接。请先通过连接测试，再点「设为当前模型」。
+					</p>
+				)}
+
+				{exportNotice && (
+					<p className="mt-3 text-muted-foreground text-sm">{exportNotice}</p>
+				)}
+			</section>
+
+			<BehaviourSettings
+				tier={store.tier}
+				onTierChange={store.setTier}
+				style={style}
+				onStyleChange={(next) => {
+					if (isTranslationStyleId(next)) setStyle(next);
+				}}
+				customInstruction={customInstruction}
+				onCustomInstructionChange={updateInstruction}
+				instructionNotice={instructionNotice}
+				usableConnections={store.usableConnections}
+			/>
+
+			<section className={sectionClass}>
+				<h2 className="font-semibold text-xl">备份与安全</h2>
+				<p className="mt-2 text-muted-foreground text-sm">
+					配置可导出为 JSON
+					自行备份。导出默认不包含密钥；密钥只存在本浏览器的独立存储槽中。
+				</p>
+
+				<label className="mt-3 flex items-center gap-2 text-sm">
+					<input
+						type="checkbox"
+						checked={exportIncludeKeys}
+						onChange={(event) => setExportIncludeKeys(event.target.checked)}
+					/>
+					导出时包含 API Key（不推荐，会先二次确认）
+				</label>
+
+				<div className="mt-4 flex flex-wrap gap-3">
+					<button type="button" className={buttonClass} onClick={runExport}>
+						导出配置
+					</button>
+					<button
+						type="button"
+						className={
+							clearConfirming
+								? "rounded-md bg-destructive px-4 py-2 text-sm text-destructive-foreground"
+								: ghostButtonClass
+						}
+						onClick={clearKeys}
+					>
+						{clearConfirming ? "确认清除所有密钥？" : "清除所有密钥"}
+					</button>
+					{clearConfirming && (
+						<button
+							type="button"
+							className={ghostButtonClass}
+							onClick={() => setClearConfirming(false)}
+						>
+							取消
+						</button>
+					)}
+				</div>
+
+				{store.connections.length > 0 && (
+					<p className="mt-3 text-muted-foreground text-xs">
+						当前已保存密钥：
+						{store.connections
+							.filter((connection) => store.hasKey(connection.id))
+							.map(
+								(connection) =>
+									`${connection.name} ${maskSecret(store.keyFor(connection.id))}`,
+							)
+							.join("、") || "（无）"}
+					</p>
+				)}
+			</section>
+		</>
+	);
+}

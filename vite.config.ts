@@ -22,7 +22,17 @@ console.log(`[mintranslate] base path: ${basePath}`);
 
 export default defineConfig({
 	base: toViteBase(basePath),
-	resolve: { tsconfigPaths: true },
+	resolve: {
+		tsconfigPaths: true,
+		alias: [
+			// `@tanstack/ai-ollama` imports `ollama`, whose default entry point pulls
+			// in `node:fs` and `node:path`. Those cannot run in a browser and would
+			// end up as stubbed externals in the bundle. Pointing the bare specifier
+			// at the package's browser build keeps the Node built-ins out entirely.
+			// The pattern is anchored so `ollama/browser` itself is left alone.
+			{ find: /^ollama$/, replacement: "ollama/browser" },
+		],
+	},
 	environments: {
 		// The client environment produces the deployable artifact, and it owns
 		// `STATIC_OUTPUT_DIR` directly so the directory to publish is not a
