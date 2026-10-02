@@ -19,7 +19,7 @@ import {
 	toViteBase,
 } from '../src/lib/base-path.ts'
 import { shouldShowInsecureContextNotice } from '../src/lib/secure-context.ts'
-import { readdirSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 let checks = 0
@@ -104,5 +104,66 @@ assert.deepEqual(
 	`build output must contain no font files, found: ${fontFiles.join(', ')}`,
 )
 checks += 1
+
+// --- intranet-build output invariants -------------------------------------
+// What an air-gapped build must not contain. Checked here as well as by the
+// external-reference gate because the two answer different questions: the gate
+// decides whether a build ships, this file states the invariants in one place.
+//
+// The assertions are conditional on the build being an intranet build. A build
+// that *was* configured with an analytics identifier is expected to name the
+// analytics host, so asserting its absence there would fail a correct build.
+const outputDir = process.argv[2] ?? 'dist'
+const outputFiles = listFiles(outputDir)
+
+/**
+ * Whether this build was configured with analytics.
+ *
+ * The same pair of variables the gate reads, so the two cannot disagree about
+ * which kind of build this is.
+ */
+function analyticsConfigured() {
+	if (process.env.VITE_GA_ENABLED?.trim().toLowerCase() === 'false') return false
+	return Boolean(process.env.VITE_GA_MEASUREMENT_ID?.trim())
+}
+
+/** Files whose bytes contain a needle. */
+function filesContaining(needle) {
+	return outputFiles.filter((file) => {
+		try {
+			return readFileSync(file, 'utf8').includes(needle)
+		} catch {
+			return false
+		}
+	})
+}
+
+if (!analyticsConfigured()) {
+	for (const [label, needle] of [
+		['analytics (gtag)', 'googletagmanager.com'],
+		['analytics (collect)', 'google-analytics.com'],
+		['font service', 'fonts.googleapis.com'],
+		['font service (static)', 'fonts.gstatic.com'],
+		['public CDN', 'cdn.jsdelivr.net'],
+	]) {
+		const hits = filesContaining(needle)
+		assert.deepEqual(
+			hits,
+			[],
+			`an intranet build must not name ${label}: found in ${hits.join(', ')}`,
+		)
+		checks += 1
+	}
+} else {
+	// A configured build is a different shape, so assert the invariant that does
+	// hold for it: the analytics host is present, which is what "configured" means
+	// in the output rather than only in the environment.
+	const hits = filesContaining('googletagmanager.com')
+	assert.ok(
+		hits.length > 0,
+		'a build configured with an analytics identifier must name the analytics host',
+	)
+	checks += 1
+}
 
 console.log(`[check-helpers] OK - ${checks} assertions passed.`)

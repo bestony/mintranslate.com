@@ -15,7 +15,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
@@ -206,6 +206,110 @@ for (const testCase of mustFail) {
 		'the build-time analytics master switch must override a measurement ID',
 	)
 	checks += 3
+}
+
+// --- intranet build: no analytics / font / CDN host as a bare string ----------
+// These are strings, not resource references, so the resource check would let them
+// through. In a build made without an analytics identifier they are a regression
+// in intent: the application has no reason to name such a host at all.
+{
+	const outboundHosts = [
+		'https://www.googletagmanager.com/gtag/js',
+		'https://www.google-analytics.com/collect',
+		'https://fonts.googleapis.com/css2?family=X',
+		'https://fonts.gstatic.com/s/x.woff2',
+		'https://cdn.jsdelivr.net/npm/pkg',
+		'https://unpkg.com/pkg',
+		'https://cdnjs.cloudflare.com/ajax/libs/p',
+	]
+
+	for (const url of outboundHosts) {
+		const fixture = { 'index.html': `<meta name="x" content="${url}">` }
+		assert.equal(
+			runChecker(fixture).exitCode,
+			1,
+			`intranet build must reject ${new URL(url).host} even as a bare string`,
+		)
+		checks += 1
+	}
+
+	// The same strings are acceptable when the build was configured for analytics,
+	// because then the reference is intentional and the origin is allowlisted.
+	assert.equal(
+		runChecker({ 'index.html': '<meta name="x" content="https://www.googletagmanager.com/gtag/js">' }, {
+			VITE_GA_MEASUREMENT_ID: 'G-ABC',
+		}).exitCode,
+		0,
+		'a configured build may name the analytics host',
+	)
+	checks += 1
+}
+
+// --- intranet build: provider endpoints and SDK doc links stay informational ---
+// Endpoint constants and vendored documentation links are never requested by an
+// automatic code path. Rejecting them would mean deleting features or patching
+// dependencies, so they must be reported without failing the build.
+{
+	const informational = {
+		'assets/a.js':
+			'const e="https://api.openai.com/v1";const d="https://docs.expo.dev/x";const s="https://www.google.com/search?q=";',
+	}
+	const result = runChecker(informational)
+
+	assert.equal(
+		result.exitCode,
+		0,
+		'provider endpoints, SDK doc links and search-engine addresses must not fail an intranet build',
+	)
+	assert.match(result.stdout, /api\.openai\.com/, 'the host must still be reported')
+	assert.match(result.stdout, /docs\.expo\.dev/, 'the host must still be reported')
+	assert.match(
+		result.stdout,
+		/informational/i,
+		'the report must say these are not fetched',
+	)
+	checks += 3
+}
+
+// --- the intranet assertion does not loosen the resource check ---------------
+{
+	// Analytics allowed by configuration, but a real external script is still fatal.
+	assert.equal(
+		runChecker(
+			{ 'index.html': '<script src="https://evil.example.com/x.js"></script>' },
+			{ VITE_GA_MEASUREMENT_ID: 'G-ABC' },
+		).exitCode,
+		1,
+		'an external resource reference must still fail a configured build',
+	)
+	// And a resource reference is still fatal in an intranet build too.
+	assert.equal(
+		runChecker({
+			'index.html': '<link rel="stylesheet" href="https://fonts.example.com/a.css">',
+		}).exitCode,
+		1,
+		'an external resource reference must still fail an intranet build',
+	)
+	checks += 2
+}
+
+// --- the gate is offline-capable --------------------------------------------
+// An air-gapped deployment has to be able to run its own verification, so the gate
+// must not reach the network. Asserted over the source: a probe would only fire on
+// a code path this suite cannot stage, and the point is that no such path exists.
+{
+	const source = readFileSync(CHECKER, 'utf8')
+	const code = source
+		.replace(/\/\*[\s\S]*?\*\//g, '')
+		.replace(/(^|[^:])\/\/.*$/gm, '$1')
+
+	for (const api of ['fetch(', 'XMLHttpRequest', 'node:https', 'node:http', 'axios']) {
+		assert.ok(
+			!code.includes(api),
+			`the gate must not use ${api}: it has to run without network access`,
+		)
+	}
+	checks += 5
 }
 
 rmSync(workspace, { recursive: true, force: true })

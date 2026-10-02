@@ -99,6 +99,42 @@ function analyticsConfigured() {
 }
 
 /**
+ * Hosts that would mean the application fetches something on its own.
+ *
+ * Checked in an intranet build even as bare strings, because a *string* here is
+ * still a regression in intent: analytics, fonts and CDNs are the three categories
+ * the application must never reach out to, and their presence means either a
+ * dependency crept back in or a resource was not localised.
+ *
+ * This is deliberately narrower than "no public hostname at all". Provider
+ * endpoint constants and third-party documentation links are strings that no
+ * automatic code path requests, and forbidding them would mean deleting features or
+ * patching vendored packages — see the `intranet-build` spec for why the
+ * requirement is scoped to outbound requests.
+ */
+const OUTBOUND_HOST_PATTERNS = [
+	// Analytics.
+	/(^|\.)googletagmanager\.com$/,
+	/(^|\.)google-analytics\.com$/,
+	/(^|\.)google-analytics\.cn$/,
+	// Font services.
+	/(^|\.)fonts\.googleapis\.com$/,
+	/(^|\.)fonts\.gstatic\.com$/,
+	/(^|\.)use\.typekit\.net$/,
+	// Public CDNs.
+	/(^|\.)cdn\.jsdelivr\.net$/,
+	/(^|\.)jsdelivr\.net$/,
+	/(^|\.)unpkg\.com$/,
+	/(^|\.)cdnjs\.cloudflare\.com$/,
+	/(^|\.)cdn\.tailwindcss\.com$/,
+]
+
+/** Whether a host belongs to a category the application must never fetch from. */
+function isOutboundHost(host) {
+	return OUTBOUND_HOST_PATTERNS.some((pattern) => pattern.test(host))
+}
+
+/**
  * Any absolute or protocol-relative URL, with its path.
  *
  * Used as the low-level token both detectors build on. The path is captured so
@@ -330,6 +366,8 @@ function main() {
 	const files = collectFiles(outputDir)
 	const failures = []
 	const reports = []
+	/** Analytics / font / CDN hosts found as bare strings in an intranet build. */
+	const outboundHits = []
 
 	for (const file of files) {
 		const source = readFileSync(file, 'utf8')
@@ -356,6 +394,17 @@ function main() {
 
 		for (const bare of findBareUrls(source, allowedOrigins, coveredSpans)) {
 			reports.push({ file: relativePath, ...bare })
+
+			// In an intranet build these are fatal even though they are only
+			// strings: the application has no legitimate reason to name a font
+			// service, a CDN or an analytics host at all.
+			if (!analyticsConfigured() && isOutboundHost(bare.host)) {
+				outboundHits.push({
+					file: relativePath,
+					line: locate(source, bare.index ?? 0),
+					host: bare.host,
+				})
+			}
 		}
 	}
 
@@ -380,10 +429,30 @@ function main() {
 		}
 	}
 
+	// --- outbound-capable hosts in an intranet build (fatal) ---------------
+	if (outboundHits.length > 0) {
+		console.error(
+			`\n[verify:no-external-refs] FAIL - ${outboundHits.length} analytics/font/CDN host(s) found in an intranet build.\n`,
+		)
+		console.error(
+			'This build was made without an analytics identifier, so it must contain no reference to a service the application could fetch from on its own.\n',
+		)
+		for (const hit of outboundHits) {
+			console.error(`  ${hit.file}:${hit.line}  ->  ${hit.host}`)
+		}
+		console.error(
+			'\nRemove the reference, self-host the asset, or (for the outbound list itself) update OUTBOUND_HOST_PATTERNS in scripts/check-external-refs.mjs.',
+		)
+		process.exit(1)
+	}
+
 	// --- resource references (fatal) ---------------------------------------
 	if (failures.length === 0) {
+		const intranet = analyticsConfigured()
+			? ''
+			: ', and no analytics/font/CDN host (intranet build)'
 		console.log(
-			`[verify:no-external-refs] OK - ${files.length} file(s) scanned, no external resource references.`,
+			`[verify:no-external-refs] OK - ${files.length} file(s) scanned, no external resource references${intranet}.`,
 		)
 		return
 	}
