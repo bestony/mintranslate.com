@@ -5,6 +5,7 @@ import {
 	Scripts,
 } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { PwaStatus } from "#/components/pwa/PwaStatus";
 import { resolveConfig } from "#/lib/analytics/config";
 import { ANALYTICS_SCRIPT_URL } from "#/lib/analytics/loader";
 import { withBase } from "#/lib/base-path";
@@ -122,6 +123,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 			</head>
 			<body>
 				<InsecureContextNotice />
+				{/* Update prompt, offline notice. Mounted in the shell so it appears on
+				    every route without each page remembering it. */}
+				<PwaStatus />
 				{children}
 				<Scripts />
 			</body>

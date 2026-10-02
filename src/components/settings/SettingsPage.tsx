@@ -28,6 +28,7 @@ import {
 import { createConnectionTestController } from "#/lib/connections/test-controller";
 import { describeTierTarget, resolveTier } from "#/lib/connections/tiers";
 import { maskSecret } from "#/lib/credentials/redact";
+import { usePwa } from "../pwa/usePwa";
 import { ConnectionForm, PresetHint } from "./ConnectionForm";
 import { PrivacyNotice } from "./PrivacyNotice";
 
@@ -150,6 +151,8 @@ export function SettingsPage() {
 	);
 	const [clearConfirming, setClearConfirming] = useState(false);
 	const [privacyOpen, setPrivacyOpen] = useState(false);
+	/** Install guidance and the platform capability matrix. */
+	const pwa = usePwa();
 	const [instructionNotice, setInstructionNotice] = useState<
 		string | undefined
 	>(undefined);
@@ -428,6 +431,65 @@ export function SettingsPage() {
 					open={privacyOpen}
 					onToggle={() => setPrivacyOpen((current) => !current)}
 				/>
+			</section>
+
+			<section className={sectionClass}>
+				<h2 className="font-semibold text-xl">安装与离线</h2>
+
+				{pwa.installGuidance.installed ? (
+					<p className="mt-2 text-muted-foreground text-sm">
+						应用已安装，正在以独立窗口运行。
+					</p>
+				) : pwa.installGuidance.mode === "prompt" ? (
+					<div className="mt-2">
+						<button
+							type="button"
+							className={buttonClass}
+							onClick={pwa.requestInstall}
+						>
+							安装到桌面
+						</button>
+					</div>
+				) : pwa.installGuidance.mode === "manual" ? (
+					<p className="mt-2 text-muted-foreground text-sm">
+						{pwa.installGuidance.instructions}
+					</p>
+				) : (
+					<p className="mt-2 text-muted-foreground text-sm">
+						{pwa.installGuidance.unsupportedNotice}
+					</p>
+				)}
+
+				<div className="mt-4">
+					<p className="font-medium text-sm">当前平台能力</p>
+					<ul className="mt-1 space-y-1 text-muted-foreground text-xs">
+						{pwa.capabilities.map((capability) => (
+							<li key={capability.id}>
+								{capability.available ? "✓" : "—"} {capability.label}
+								{capability.reason !== undefined && `（${capability.reason}）`}
+							</li>
+						))}
+					</ul>
+				</div>
+
+				<div className="mt-4">
+					<button
+						type="button"
+						className={ghostButtonClass}
+						onClick={pwa.checkForUpdate}
+					>
+						检查更新
+					</button>
+					{pwa.updateReady && (
+						<button
+							type="button"
+							className={`${buttonClass} ml-2`}
+							onClick={pwa.applyUpdate}
+						>
+							有新版本，立即更新
+						</button>
+					)}
+				</div>
 			</section>
 
 			<section className={sectionClass}>

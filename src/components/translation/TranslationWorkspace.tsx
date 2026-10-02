@@ -66,6 +66,7 @@ import { FeedbackPanel } from "../output/FeedbackPanel";
 import { SearchLookupButton } from "../output/SearchLookupButton";
 import { ShareMenu } from "../output/ShareMenu";
 import { SpeechControls } from "../output/SpeechControls";
+import { InstallButton } from "../pwa/PwaStatus";
 import { LanguagePicker, languageChipLabel } from "./LanguagePicker";
 
 /** How the modifier key is shown for the current platform. */
@@ -634,7 +635,10 @@ export function TranslationWorkspace() {
 						<span className="text-muted-foreground text-xs">
 							{active ? `使用中：${active.name}` : "未配置连接"}
 						</span>
-						<span className="ml-auto text-muted-foreground text-xs">
+						<span className="ml-auto flex items-center gap-3 text-muted-foreground text-xs">
+							{/* Present only when the browser can actually prompt, so it is
+							    never a button that does nothing. */}
+							<InstallButton />
 							{modifier}+Enter 立即翻译 · {modifier}+Shift+S 交换语言
 						</span>
 					</div>
