@@ -25,6 +25,34 @@ function session(): BuiltinLanguageModelSession {
 }
 
 describe("built-in LanguageModel client", () => {
+	it("includes the request system instruction in the Prompt API session", async () => {
+		const api: BuiltinLanguageModelApi = {
+			availability: vi.fn().mockResolvedValue("available"),
+			create: vi.fn().mockResolvedValue(session()),
+		};
+		const client = createBuiltinLanguageModelClient({ api });
+
+		await client.prompt(
+			{ text: "read the image" },
+			{
+				targetLanguage: "ja",
+				systemInstruction: "Use the glossary and the formal style.",
+			},
+		);
+
+		expect(api.create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				initialPrompts: [
+					{
+						role: "system",
+						content:
+							"Translate into ja.\n\nUse the glossary and the formal style.",
+					},
+				],
+			}),
+		);
+	});
+
 	it("creates with expected inputs and outputs and forwards monitor progress", async () => {
 		let progressEvent: ((event: { loaded: number }) => void) | undefined;
 		const api: BuiltinLanguageModelApi = {

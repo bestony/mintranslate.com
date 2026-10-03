@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { BuiltinLanguageModelClient } from "../builtin-ai/language-model";
 import type { BuiltinTranslatorClient } from "../builtin-ai/translator";
 import { createConcurrencyLimiter } from "../call-control/concurrency";
 import type { Connection } from "./model";
@@ -27,6 +28,50 @@ function connection(
 }
 
 describe("model caller — capability refusal happens before any request", () => {
+	it("passes the system instruction to the built-in multimodal model", async () => {
+		const prompt = vi.fn().mockResolvedValue("translated");
+		const builtinLanguageModel = {
+			availability: vi.fn(),
+			create: vi.fn(),
+			prompt,
+			promptStreaming: vi.fn(),
+			destroy: vi.fn(),
+		} as unknown as BuiltinLanguageModelClient;
+		const caller = createModelCaller({
+			limiterFor: () => createConcurrencyLimiter(),
+			builtinLanguageModel,
+		});
+
+		await expect(
+			caller.call({
+				connection: connection({
+					id: "builtin-multimodal",
+					provider: "builtin-multimodal",
+					endpoint: "",
+					model: "",
+					capabilities: { text: true, vision: true },
+				}),
+				apiKey: "",
+				requirement: "vision",
+				userContent: "translate this image",
+				systemInstruction: "Use the glossary and the formal style.",
+				targetLanguage: "ja",
+				images: [{ base64: "AQI=", mimeType: "image/png" }],
+			}),
+		).resolves.toEqual({ kind: "result", text: "translated" });
+
+		expect(prompt).toHaveBeenCalledWith(
+			{
+				text: "translate this image",
+				images: [{ base64: "AQI=", mimeType: "image/png" }],
+			},
+			expect.objectContaining({
+				targetLanguage: "ja",
+				systemInstruction: "Use the glossary and the formal style.",
+			}),
+		);
+	});
+
 	it("routes the built-in translator on the main thread without an adapter", async () => {
 		const translate = vi.fn().mockResolvedValue({
 			text: "你好",

@@ -353,11 +353,13 @@ async function performCall(
 						signal,
 						responseConstraint: request.responseConstraint,
 						targetLanguage: request.targetLanguage,
+						systemInstruction: request.systemInstruction,
 					})
 				: await builtinLanguageModel.prompt(input, {
 						signal,
 						responseConstraint: request.responseConstraint,
 						targetLanguage: request.targetLanguage,
+						systemInstruction: request.systemInstruction,
 					});
 			return { text };
 		}

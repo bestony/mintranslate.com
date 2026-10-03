@@ -30,6 +30,7 @@ export interface BuiltinModelPromptInput {
 /** Explicit creation options, usually called from a user gesture. */
 export interface BuiltinLanguageModelCreateOptions {
 	readonly targetLanguage?: string;
+	readonly systemInstruction?: string;
 	readonly onProgress?: (progress: number) => void;
 	readonly signal?: AbortSignal;
 }
@@ -39,6 +40,7 @@ export interface BuiltinLanguageModelPromptOptions {
 	readonly signal?: AbortSignal;
 	readonly responseConstraint?: unknown;
 	readonly targetLanguage?: string;
+	readonly systemInstruction?: string;
 }
 
 /** Error raised when a session needs explicit activation or is unavailable. */
@@ -136,6 +138,14 @@ export function createBuiltinLanguageModelClient(
 			});
 
 		createOptions.signal?.throwIfAborted();
+		const systemInstruction = [
+			...(createOptions.targetLanguage !== undefined
+				? [`Translate into ${createOptions.targetLanguage}.`]
+				: []),
+			...(createOptions.systemInstruction
+				? [createOptions.systemInstruction]
+				: []),
+		].join("\n\n");
 		const created = await api.create({
 			expectedInputs: options.expectedInputs ?? [
 				{ type: "text", languages: ["en", "ja", "es", "de", "fr"] },
@@ -144,11 +154,11 @@ export function createBuiltinLanguageModelClient(
 			expectedOutputs: options.expectedOutputs ?? [
 				{ type: "text", languages: ["en", "ja", "es", "de", "fr"] },
 			],
-			...(createOptions.targetLanguage !== undefined && {
+			...(systemInstruction !== "" && {
 				initialPrompts: [
 					{
 						role: "system",
-						content: `Translate into ${createOptions.targetLanguage}.`,
+						content: systemInstruction,
 					},
 				],
 			}),
@@ -182,7 +192,11 @@ export function createBuiltinLanguageModelClient(
 			throw new BuiltinLanguageModelNotReadyError(readiness, {
 				targetLanguage,
 			});
-		await create({ targetLanguage, signal: promptOptions.signal });
+		await create({
+			targetLanguage,
+			systemInstruction: promptOptions.systemInstruction,
+			signal: promptOptions.signal,
+		});
 		if (session === undefined)
 			throw new BuiltinLanguageModelNotReadyError({
 				state: "unavailable",
