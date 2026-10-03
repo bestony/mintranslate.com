@@ -41,6 +41,17 @@ import {
 } from "#/lib/translation-memory";
 import { DocumentDropZone } from "./DocumentDropZone";
 import { DocumentResultView } from "./DocumentResultView";
+import {
+	bindDocumentRunTask,
+	canDeleteDocumentTask,
+	canStartDocumentRun,
+	type DocumentRunReservation,
+	hasResumableSource,
+	ownsDocumentRun,
+	reserveDocumentRun,
+	shouldDisableDeleteDocumentTask,
+	shouldDisableResume,
+} from "./task-actions";
 
 interface DocumentTranslationModeProps {
 	readonly connection: Connection | undefined;
@@ -99,6 +110,28 @@ function resultMime(format: DocumentFormat): string {
 	return format === "pdf" ? "text/plain;charset=utf-8" : MIME_TYPES[format];
 }
 
+const CANCEL_NOTICE =
+	"已取消，已完成的块已保留；如果原文件已清理，请重新上传。";
+
+async function sourceAvailabilityFor(
+	currentStore: DocumentTaskStore,
+	entries: readonly DocumentTaskRecord[],
+): Promise<ReadonlyMap<string, boolean>> {
+	const available = await Promise.all(
+		entries.map(async (entry) => {
+			try {
+				return [entry.id, await currentStore.hasSource(entry.id)] as const;
+			} catch (error) {
+				logger.warn("document.ui.source-check-failed", {
+					reason: error instanceof Error ? error.message : String(error),
+				});
+				return [entry.id, false] as const;
+			}
+		}),
+	);
+	return new Map(available);
+}
+
 /** Upload, resume, translate, and deliver one document. */
 export function DocumentTranslationMode({
 	connection,
@@ -112,6 +145,9 @@ export function DocumentTranslationMode({
 	const [store, setStore] = useState<DocumentTaskStore | undefined>(undefined);
 	const storeRef = useRef<DocumentTaskStore | undefined>(undefined);
 	const [tasks, setTasks] = useState<readonly DocumentTaskRecord[]>([]);
+	const [sourceAvailability, setSourceAvailability] = useState<
+		ReadonlyMap<string, boolean>
+	>(() => new Map());
 	const [task, setTask] = useState<DocumentTaskRecord | undefined>(undefined);
 	const [format, setFormat] = useState<DocumentFormat | undefined>(undefined);
 	const [notice, setNotice] = useState<string | undefined>(undefined);
@@ -121,7 +157,42 @@ export function DocumentTranslationMode({
 	const [downloadName, setDownloadName] = useState<string | undefined>(
 		undefined,
 	);
-	const abortRef = useRef<AbortController | undefined>(undefined);
+	const runReservationRef = useRef<DocumentRunReservation | undefined>(
+		undefined,
+	);
+	const [runReservation, setRunReservation] = useState<
+		DocumentRunReservation | undefined
+	>(undefined);
+
+	const reserveRun = useCallback((taskId?: string) => {
+		const reservation = reserveDocumentRun(
+			runReservationRef.current,
+			new AbortController(),
+			taskId,
+		);
+		if (reservation === undefined) return undefined;
+		runReservationRef.current = reservation;
+		setRunReservation(reservation);
+		return reservation;
+	}, []);
+
+	const bindRunTask = useCallback(
+		(reservation: DocumentRunReservation, taskId: string) => {
+			if (!ownsDocumentRun(runReservationRef.current, reservation))
+				return reservation;
+			const bound = bindDocumentRunTask(reservation, taskId);
+			runReservationRef.current = bound;
+			setRunReservation(bound);
+			return bound;
+		},
+		[],
+	);
+
+	const releaseRun = useCallback((reservation: DocumentRunReservation) => {
+		if (!ownsDocumentRun(runReservationRef.current, reservation)) return;
+		runReservationRef.current = undefined;
+		setRunReservation(undefined);
+	}, []);
 
 	useEffect(() => {
 		let disposed = false;
@@ -129,11 +200,18 @@ export function DocumentTranslationMode({
 			if (disposed) return;
 			storeRef.current = opened;
 			setStore(opened);
-			if (opened) setTasks(await opened.list());
+			if (opened) {
+				const listed = await opened.list();
+				if (disposed) return;
+				setTasks(listed);
+				setSourceAvailability(
+					await sourceAvailabilityFor(opened, listed.slice(0, 5)),
+				);
+			}
 		});
 		return () => {
 			disposed = true;
-			abortRef.current?.abort();
+			runReservationRef.current?.controller.abort();
 		};
 	}, []);
 
@@ -151,7 +229,11 @@ export function DocumentTranslationMode({
 	}, []);
 
 	const refreshTasks = useCallback(async (currentStore: DocumentTaskStore) => {
-		setTasks(await currentStore.list());
+		const listed = await currentStore.list();
+		setTasks(listed);
+		setSourceAvailability(
+			await sourceAvailabilityFor(currentStore, listed.slice(0, 5)),
+		);
 	}, []);
 
 	const deliver = useCallback(
@@ -196,13 +278,18 @@ export function DocumentTranslationMode({
 			source: Uint8Array,
 			parsedPdf: PdfExtraction | undefined,
 			currentStore: DocumentTaskStore,
+			reservation: DocumentRunReservation,
 		) => {
+			if (
+				canStartDocumentRun(runReservationRef.current) ||
+				!ownsDocumentRun(runReservationRef.current, reservation)
+			)
+				return;
 			if (connection === undefined) {
 				setNotice("还没有可用的连接。请先在设置页配置一个支持文本输入的模型。");
 				return;
 			}
-			const controller = new AbortController();
-			abortRef.current = controller;
+			const controller = reservation.controller;
 			setTask(record);
 			setNotice(undefined);
 			try {
@@ -231,7 +318,7 @@ export function DocumentTranslationMode({
 				);
 				setTask(outcome.record);
 				if (outcome.kind === "cancelled") {
-					setNotice("已取消，已完成的块已保留；可以稍后继续。");
+					setNotice(CANCEL_NOTICE);
 					return;
 				}
 				if (outcome.kind === "failed") {
@@ -258,7 +345,7 @@ export function DocumentTranslationMode({
 				await refreshTasks(currentStore);
 			} catch (error) {
 				if (controller.signal.aborted) {
-					setNotice("已取消，已完成的块已保留；可以稍后继续。");
+					setNotice(CANCEL_NOTICE);
 					return;
 				}
 				logger.warn("document.ui.failed", {
@@ -266,6 +353,9 @@ export function DocumentTranslationMode({
 				});
 				const attribution = attributeFailure({ error });
 				setNotice(attribution.summary);
+			} finally {
+				// The submit or resume owner releases the reservation in its outer
+				// finally, including setup failures before this function is called.
 			}
 		},
 		[analytics, apiKey, connection, customInstruction, deliver, refreshTasks],
@@ -273,30 +363,35 @@ export function DocumentTranslationMode({
 
 	const submit = useCallback(
 		async (file: File) => {
-			clearDownload();
-			setNotice(undefined);
-			setEmpty(false);
-			setFormat(undefined);
-			setTask(undefined);
-			const validation = validateDocument({
-				name: file.name,
-				type: file.type,
-				size: file.size,
-			});
-			if (!validation.ok) {
-				setNotice(validation.reason);
-				return;
-			}
-
-			const currentStore = storeRef.current ?? (await openDocumentTaskStore());
-			if (currentStore === undefined) {
-				setNotice("本地任务存储不可用，无法保存进度。");
-				return;
-			}
-			storeRef.current = currentStore;
-			setStore(currentStore);
-
+			const reserved = reserveRun();
+			if (reserved === undefined) return;
+			let reservation = reserved;
+			let storageWriteStarted = false;
 			try {
+				clearDownload();
+				setNotice(undefined);
+				setEmpty(false);
+				setFormat(undefined);
+				setTask(undefined);
+				const validation = validateDocument({
+					name: file.name,
+					type: file.type,
+					size: file.size,
+				});
+				if (!validation.ok) {
+					setNotice(validation.reason);
+					return;
+				}
+
+				const currentStore =
+					storeRef.current ?? (await openDocumentTaskStore());
+				if (currentStore === undefined) {
+					setNotice("本地任务存储不可用，无法保存进度。");
+					return;
+				}
+				storeRef.current = currentStore;
+				setStore(currentStore);
+
 				const bytes = new Uint8Array(await file.arrayBuffer());
 				const parsed = await parseInput(bytes, validation.format);
 				setFormat(parsed.format);
@@ -324,6 +419,8 @@ export function DocumentTranslationMode({
 					chunks: parsed.chunks.map((chunk) => ({ chunk })),
 					now: Date.now(),
 				});
+				reservation = bindRunTask(reservation, created.id);
+				storageWriteStarted = true;
 				await currentStore.dropStaleSources(created.id);
 				await currentStore.save(created);
 				await currentStore.saveSource(created.id, bytes);
@@ -339,18 +436,28 @@ export function DocumentTranslationMode({
 					),
 					input_kind: "document",
 				});
-				await runTask(created, bytes, parsed.pdf, currentStore);
+				await runTask(created, bytes, parsed.pdf, currentStore, reservation);
 			} catch (error) {
-				logger.warn("document.ui.parse-failed", {
+				logger.warn("document.ui.submit-failed", {
+					phase: storageWriteStarted ? "storage" : "parse",
 					reason: error instanceof Error ? error.message : String(error),
 				});
-				setNotice(unparsableReason(file.name));
+				setNotice(
+					storageWriteStarted
+						? "本地任务存储写入失败，无法保存进度，请重试。"
+						: unparsableReason(file.name),
+				);
+			} finally {
+				releaseRun(reservation);
 			}
 		},
 		[
 			analytics,
 			clearDownload,
+			bindRunTask,
+			releaseRun,
 			refreshTasks,
+			reserveRun,
 			runTask,
 			sourceLang,
 			styleId,
@@ -360,45 +467,59 @@ export function DocumentTranslationMode({
 
 	const resume = useCallback(
 		async (candidate: DocumentTaskRecord) => {
-			const currentStore = storeRef.current;
-			if (currentStore === undefined) {
-				setNotice("本地任务存储不可用，无法续传。");
-				return;
-			}
-			const source = await currentStore.loadSource(candidate.id);
-			if (source === undefined) {
-				setNotice("原文件已清理，无法续传；请重新上传。");
-				return;
-			}
-			const current = resetResultsForContext(
-				candidate,
-				{ sourceLang, targetLang, styleId },
-				Date.now(),
-			);
-			if (current !== candidate) {
-				await currentStore.save(current);
-				await refreshTasks(currentStore);
-			}
-			setFormat(current.format);
-			setEmpty(false);
-			setNotice(undefined);
-			let parsedPdf: PdfExtraction | undefined;
-			if (current.format === "pdf") {
-				try {
-					const parsed = await parseInput(source, "pdf");
-					parsedPdf = parsed.pdf;
-				} catch {
-					setNotice(unparsableReason(current.fileName));
+			const reservation = reserveRun(candidate.id);
+			if (reservation === undefined) return;
+			try {
+				const currentStore = storeRef.current;
+				if (currentStore === undefined) {
+					setNotice("本地任务存储不可用，无法续传。");
 					return;
 				}
+				const source = await currentStore.loadSource(candidate.id);
+				if (source === undefined) {
+					setNotice("原文件已清理，无法续传；请重新上传。");
+					return;
+				}
+				const current = resetResultsForContext(
+					candidate,
+					{ sourceLang, targetLang, styleId },
+					Date.now(),
+				);
+				if (current !== candidate) {
+					await currentStore.save(current);
+					await refreshTasks(currentStore);
+				}
+				setFormat(current.format);
+				setEmpty(false);
+				setNotice(undefined);
+				let parsedPdf: PdfExtraction | undefined;
+				if (current.format === "pdf") {
+					try {
+						const parsed = await parseInput(source, "pdf");
+						parsedPdf = parsed.pdf;
+					} catch {
+						setNotice(unparsableReason(current.fileName));
+						return;
+					}
+				}
+				await runTask(current, source, parsedPdf, currentStore, reservation);
+			} finally {
+				releaseRun(reservation);
 			}
-			await runTask(current, source, parsedPdf, currentStore);
 		},
-		[refreshTasks, runTask, sourceLang, styleId, targetLang],
+		[
+			refreshTasks,
+			releaseRun,
+			reserveRun,
+			runTask,
+			sourceLang,
+			styleId,
+			targetLang,
+		],
 	);
 
 	const cancel = useCallback(() => {
-		abortRef.current?.abort();
+		runReservationRef.current?.controller.abort();
 	}, []);
 
 	const remove = useCallback(
@@ -418,7 +539,7 @@ export function DocumentTranslationMode({
 	return (
 		<section className="flex min-h-0 flex-col" aria-label="文档翻译">
 			<DocumentDropZone
-				disabled={activeTask}
+				disabled={runReservation !== undefined}
 				onAccept={(file) => void submit(file)}
 				onReject={setNotice}
 			/>
@@ -487,20 +608,37 @@ export function DocumentTranslationMode({
 									{entry.chunks.length}
 								</span>
 								<div className="flex flex-wrap gap-2">
-									{entry.state !== "succeeded" && (
+									{hasResumableSource(
+										entry,
+										sourceAvailability.get(entry.id) === true,
+									) && (
 										<button
 											type="button"
 											className="nav-link min-h-11"
+											disabled={shouldDisableResume(runReservation)}
 											onClick={() => void resume(entry)}
 										>
 											继续
 										</button>
 									)}
-									{(entry.state === "succeeded" ||
-										entry.state === "failed") && (
+									{sourceAvailability.has(entry.id) &&
+										entry.state !== "succeeded" &&
+										!hasResumableSource(
+											entry,
+											sourceAvailability.get(entry.id) === true,
+										) && (
+											<span className="text-muted-foreground">
+												原文件已清理，无法续传；请重新上传。
+											</span>
+										)}
+									{canDeleteDocumentTask(entry, task?.id, activeTask) && (
 										<button
 											type="button"
 											className="nav-link min-h-11"
+											disabled={shouldDisableDeleteDocumentTask(
+												entry,
+												runReservation,
+											)}
 											onClick={() => void remove(entry.id)}
 										>
 											删除

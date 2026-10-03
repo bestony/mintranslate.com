@@ -25,6 +25,7 @@ import type { Connection } from "../connections/model";
 import {
 	createModelCaller,
 	type ModelCaller,
+	type ModelCallRefusal,
 	type ModelCallRequest,
 	type ModelTransport,
 } from "../connections/model-caller";
@@ -116,6 +117,36 @@ class DocumentCancelledError extends Error {
 	}
 }
 
+class DocumentStoppedError extends Error {
+	constructor() {
+		super("document translation stopped");
+		this.name = "DocumentStoppedError";
+	}
+}
+
+function isDocumentStoppedError(error: unknown): error is DocumentStoppedError {
+	return error instanceof DocumentStoppedError;
+}
+
+function refusalError(refusal: ModelCallRefusal): DocumentTranslationError {
+	if (refusal.kind === "mixed_content")
+		return new DocumentTranslationError("mixed content", refusal.attribution);
+	return new DocumentTranslationError(
+		refusal.kind === "capability"
+			? refusal.reason
+			: "model call was superseded",
+	);
+}
+
+function isRefusedOutcome(
+	value: unknown,
+): value is { readonly kind: "refused"; readonly refusal: ModelCallRefusal } {
+	if (typeof value !== "object" || value === null) return false;
+	if (!("kind" in value) || value.kind !== "refused") return false;
+	if (!("refusal" in value) || typeof value.refusal !== "object") return false;
+	return value.refusal !== null && "kind" in value.refusal;
+}
+
 function defaultGlossaryMatcher(
 	text: string,
 	pair: { readonly sl: string; readonly tl: string },
@@ -165,25 +196,26 @@ async function callWithAbort(
 async function sleepWithAbort(
 	milliseconds: number,
 	signal: AbortSignal | undefined,
+	stopSignal: AbortSignal,
 	sleep: (milliseconds: number) => Promise<void>,
 ): Promise<void> {
 	abortIfNeeded(signal);
+	if (stopSignal.aborted) throw new DocumentStoppedError();
 	if (milliseconds <= 0) return;
-	if (signal === undefined) {
-		await sleep(milliseconds);
-		return;
-	}
 	await new Promise<void>((resolve, reject) => {
 		let settled = false;
 		const finish = (error?: unknown) => {
 			if (settled) return;
 			settled = true;
-			signal.removeEventListener("abort", onAbort);
+			signal?.removeEventListener("abort", onUserAbort);
+			stopSignal.removeEventListener("abort", onStopAbort);
 			if (error === undefined) resolve();
 			else reject(error);
 		};
-		const onAbort = () => finish(new DocumentCancelledError());
-		signal.addEventListener("abort", onAbort, { once: true });
+		const onUserAbort = () => finish(new DocumentCancelledError());
+		const onStopAbort = () => finish(new DocumentStoppedError());
+		signal?.addEventListener("abort", onUserAbort, { once: true });
+		stopSignal.addEventListener("abort", onStopAbort, { once: true });
 		void sleep(milliseconds).then(
 			() => finish(),
 			(error) => finish(error),
@@ -211,6 +243,7 @@ export async function translateDocument(
 	const signal = request.signal;
 	const limiterFor =
 		deps.limiterFor ?? ((id: string) => defaultLimiters.for(id));
+	const suppliedTransport = deps.transport;
 	const sleep =
 		deps.sleep ??
 		((milliseconds: number) =>
@@ -222,8 +255,65 @@ export async function translateDocument(
 	let memoryHits = 0;
 	let translatedChunks = 0;
 	let stopped = false;
+	let terminalFailure: unknown;
+	const stopController = new AbortController();
 	let current: DocumentTaskRecord = request.record;
 	let saveTail = Promise.resolve();
+
+	const stopForFailure = (error: unknown): void => {
+		if (terminalFailure === undefined) terminalFailure = error;
+		stopped = true;
+		if (!stopController.signal.aborted) stopController.abort();
+	};
+
+	const guardedLimiterFor = (
+		connectionId: string,
+		attemptsSoFar: () => number,
+	): ConcurrencyLimiter => {
+		const limiter = limiterFor(connectionId);
+		return {
+			run: (task, isLatest) =>
+				limiter
+					.run(async () => {
+						if (stopped || (isLatest !== undefined && !isLatest()))
+							throw new DocumentStoppedError();
+						try {
+							const outcome = await task();
+							if (isRefusedOutcome(outcome)) {
+								if (!(outcome.refusal.kind === "superseded" && signal?.aborted))
+									stopForFailure(refusalError(outcome.refusal));
+							}
+							return outcome;
+						} catch (error) {
+							if (error instanceof DocumentCancelledError || signal?.aborted)
+								throw error;
+							const status = statusOf(error);
+							if (!isRateLimited(status)) {
+								stopForFailure(error);
+							} else {
+								const decision = decideRetry({
+									attemptsSoFar: attemptsSoFar(),
+									retryAfter: parseRetryAfter(retryAfterOf(error)),
+									...(deps.maxRateLimitRetries !== undefined && {
+										policy: { maxRetries: deps.maxRateLimitRetries },
+									}),
+								});
+								if (decision.kind !== "retry") stopForFailure(error);
+							}
+							throw error;
+						}
+					}, isLatest)
+					.then((slot) => {
+						if (slot.kind === "superseded" && !signal?.aborted)
+							stopForFailure(
+								new DocumentTranslationError("model call was superseded"),
+							);
+						return slot;
+					}),
+			active: () => limiter.active(),
+			queued: () => limiter.queued(),
+		};
+	};
 
 	const save = (record: DocumentTaskRecord): Promise<void> => {
 		current = record;
@@ -332,8 +422,9 @@ export async function translateDocument(
 				abortIfNeeded(signal);
 				if (stopped) return;
 				const caller = createModelCaller({
-					limiterFor,
-					transport: deps.transport,
+					limiterFor: (connectionId) =>
+						guardedLimiterFor(connectionId, () => rateLimitAttempts),
+					transport: suppliedTransport,
 				});
 				callers.add(caller);
 				try {
@@ -352,16 +443,9 @@ export async function translateDocument(
 					if (outcome.kind === "refused") {
 						if (outcome.refusal.kind === "superseded" && signal?.aborted)
 							throw new DocumentCancelledError();
-						if (outcome.refusal.kind === "mixed_content")
-							throw new DocumentTranslationError(
-								"mixed content",
-								outcome.refusal.attribution,
-							);
-						throw new DocumentTranslationError(
-							outcome.refusal.kind === "capability"
-								? outcome.refusal.reason
-								: "model call was superseded",
-						);
+						const error = refusalError(outcome.refusal);
+						stopForFailure(error);
+						throw error;
 					}
 					const index = chunkIndexById.get(entry.chunk.id);
 					if (index === undefined) return;
@@ -381,6 +465,7 @@ export async function translateDocument(
 				} catch (error) {
 					if (error instanceof DocumentCancelledError || signal?.aborted)
 						throw new DocumentCancelledError();
+					if (isDocumentStoppedError(error)) throw error;
 					const status = statusOf(error);
 					if (isRateLimited(status)) {
 						const decision = decideRetry({
@@ -398,10 +483,16 @@ export async function translateDocument(
 						});
 						if (decision.kind === "retry") {
 							rateLimitAttempts += 1;
-							await sleepWithAbort(decision.waitMs, signal, sleep);
+							await sleepWithAbort(
+								decision.waitMs,
+								signal,
+								stopController.signal,
+								sleep,
+							);
 							continue;
 						}
 					}
+					stopForFailure(error);
 					throw error;
 				} finally {
 					callers.delete(caller);
@@ -433,9 +524,15 @@ export async function translateDocument(
 			};
 		}
 
-		const failed = outcomes.find((outcome) => outcome.status === "rejected");
+		const failed =
+			terminalFailure === undefined
+				? outcomes.find(
+						(outcome) =>
+							outcome.status === "rejected" &&
+							!isDocumentStoppedError(outcome.reason),
+					)
+				: { status: "rejected" as const, reason: terminalFailure };
 		if (failed?.status === "rejected") {
-			stopped = true;
 			cancelCallers();
 			const attribution = attributionFor(failed.reason);
 			logger.warn("document.translation.failed", {

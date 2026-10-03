@@ -16,6 +16,7 @@ import { chunkDocument, joinChunks, splitSentences } from "./chunk";
 import { parseOoxml, rebuildOoxml } from "./ooxml";
 import {
 	entryPathsMatching,
+	MAX_UNCOMPRESSED_DOCUMENT_BYTES,
 	readPackage,
 	readTextEntry,
 	writePackage,
@@ -29,6 +30,26 @@ function pack(entries: Record<string, string>): Uint8Array {
 		encoded[path] = new TextEncoder().encode(text);
 	}
 	return writePackage(encoded);
+}
+
+function declareCentralDirectorySize(
+	bytes: Uint8Array,
+	size: number,
+): Uint8Array {
+	const copy = new Uint8Array(bytes);
+	const view = new DataView(copy.buffer, copy.byteOffset, copy.byteLength);
+	for (let offset = 0; offset + 28 <= copy.length; offset += 1) {
+		if (
+			copy[offset] === 0x50 &&
+			copy[offset + 1] === 0x4b &&
+			copy[offset + 2] === 0x01 &&
+			copy[offset + 3] === 0x02
+		) {
+			view.setUint32(offset + 24, size, true);
+			return copy;
+		}
+	}
+	throw new Error("central directory not found");
 }
 
 /** A minimal but realistic docx body: two paragraphs, one split across runs. */
@@ -70,6 +91,22 @@ describe("zip access", () => {
 		expect(readTextEntry(readPackage(writePackage(entries)), "a.xml")).toBe(
 			"new",
 		);
+	});
+
+	it("rejects a package whose uncompressed entries exceed the budget", () => {
+		const bytes = declareCentralDirectorySize(
+			pack({ "word/document.xml": "tiny" }),
+			MAX_UNCOMPRESSED_DOCUMENT_BYTES + 1,
+		);
+
+		expect(() => readPackage(bytes)).toThrow(
+			/内容无法解析.*解压后的内容.*200 MiB/,
+		);
+	});
+
+	it("keeps every entry when the uncompressed total is within the budget", () => {
+		const entries = readPackage(pack({ "a.xml": "a", "b.xml": "b" }));
+		expect(Object.keys(entries).sort()).toEqual(["a.xml", "b.xml"]);
 	});
 });
 
@@ -113,6 +150,29 @@ describe("docx parsing", () => {
 		expect(texts).toContain("Header text");
 		expect(texts).toContain("Footer text");
 		expect(texts).toContain("Comment text");
+	});
+
+	it("keeps nested text-box paragraphs separate during parse and rebuild", () => {
+		const xml = `<w:document><w:body><w:p><w:r><w:t>Outer before </w:t></w:r><w:r><w:txbxContent><w:p><w:r><w:t>Inner text</w:t></w:r></w:p></w:txbxContent></w:r><w:r><w:t>outer after</w:t></w:r></w:p></w:body></w:document>`;
+		const bytes = pack({ "word/document.xml": xml });
+		const parsed = parseOoxml(bytes, "docx");
+
+		expect(parsed.chunks.map((chunk) => chunk.text)).toEqual([
+			"Outer before outer after",
+			"Inner text",
+		]);
+
+		const rebuilt = rebuildOoxml(
+			bytes,
+			"docx",
+			parsed.chunks.map((chunk) => ({
+				location: chunk.location,
+				target: `[${chunk.text}]`,
+			})),
+		);
+		expect(parseOoxml(rebuilt.bytes, "docx").chunks.map((c) => c.text)).toEqual(
+			["[Outer before outer after]", "[Inner text]"],
+		);
 	});
 
 	it("records which part each chunk came from", () => {

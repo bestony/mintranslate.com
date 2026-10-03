@@ -26,7 +26,11 @@ import {
 	transition,
 	wasCancelled,
 } from "./task";
-import { createTaskRecord, openDocumentTaskStore } from "./task-store";
+import {
+	createDocumentTaskStore,
+	createTaskRecord,
+	openDocumentTaskStore,
+} from "./task-store";
 
 /** Chunks for a task, optionally with some already translated. */
 function chunks(done: number, total = 3): TranslatedChunk[] {
@@ -273,6 +277,55 @@ describe("source lifetime", () => {
 });
 
 describe("persistence", () => {
+	it("waits for write commit and rejects an aborted transaction", async () => {
+		type FakeTransaction = {
+			error: DOMException | null;
+			onabort: (() => void) | null;
+			oncomplete: (() => void) | null;
+			onerror: (() => void) | null;
+		};
+		let lastTransaction: FakeTransaction | undefined;
+		const database = {
+			transaction: () => {
+				const request = {
+					result: undefined,
+					onerror: null as (() => void) | null,
+					onsuccess: null as (() => void) | null,
+				};
+				const transaction: FakeTransaction & {
+					objectStore: () => { put: () => typeof request };
+				} = {
+					error: null,
+					onabort: null,
+					oncomplete: null,
+					onerror: null,
+					objectStore: () => ({ put: () => request }),
+				};
+				lastTransaction = transaction;
+				queueMicrotask(() => request.onsuccess?.());
+				return transaction;
+			},
+		} as unknown as IDBDatabase;
+		const store = createDocumentTaskStore(database);
+
+		let settled = false;
+		const pending = store.save(record({ id: "commit-wait" })).then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		lastTransaction?.oncomplete?.();
+		await pending;
+		expect(settled).toBe(true);
+
+		const rejected = store.save(record({ id: "commit-abort" }));
+		await Promise.resolve();
+		if (lastTransaction === undefined) throw new Error("missing transaction");
+		lastTransaction.error = new DOMException("quota", "QuotaExceededError");
+		lastTransaction.onabort?.();
+		await expect(rejected).rejects.toThrow("quota");
+	});
+
 	it("saves and loads a task", async () => {
 		const store = await openDocumentTaskStore();
 		expect(store).toBeDefined();
@@ -310,6 +363,38 @@ describe("persistence", () => {
 		expect(await store.loadSource("s1")).toBeUndefined();
 	});
 
+	it("checks source presence without loading the stored bytes", async () => {
+		let countCalls = 0;
+		let getCalls = 0;
+		const database = {
+			transaction: () => {
+				const request = {
+					result: 1,
+					onerror: null as (() => void) | null,
+					onsuccess: null as (() => void) | null,
+				};
+				queueMicrotask(() => request.onsuccess?.());
+				return {
+					objectStore: () => ({
+						count: () => {
+							countCalls += 1;
+							return request;
+						},
+						get: () => {
+							getCalls += 1;
+							return request;
+						},
+					}),
+				};
+			},
+		} as unknown as IDBDatabase;
+		const store = createDocumentTaskStore(database);
+
+		expect(await store.hasSource("source-key")).toBe(true);
+		expect(countCalls).toBe(1);
+		expect(getCalls).toBe(0);
+	});
+
 	it("removing a task also removes its source", async () => {
 		// A file left behind would never be cleaned up by anything else.
 		const store = await openDocumentTaskStore();
@@ -338,5 +423,33 @@ describe("persistence", () => {
 
 		await store.remove("done");
 		await store.remove("active");
+	});
+
+	it("keeps the most recent failed source and drops older terminal sources", async () => {
+		const store = await openDocumentTaskStore();
+		if (!store) return;
+
+		await store.save(
+			record({ id: "failed-old", state: "failed", updatedAt: 1000 }),
+		);
+		await store.saveSource("failed-old", new Uint8Array([1]));
+		await store.save(
+			record({ id: "failed-new", state: "failed", updatedAt: 2000 }),
+		);
+		await store.saveSource("failed-new", new Uint8Array([2]));
+		await store.save(
+			record({ id: "succeeded-new", state: "succeeded", updatedAt: 3000 }),
+		);
+		await store.saveSource("succeeded-new", new Uint8Array([3]));
+
+		await store.dropStaleSources("active-run");
+
+		expect(await store.loadSource("failed-old")).toBeUndefined();
+		expect(await store.loadSource("failed-new")).toBeDefined();
+		expect(await store.loadSource("succeeded-new")).toBeUndefined();
+
+		await store.remove("failed-old");
+		await store.remove("failed-new");
+		await store.remove("succeeded-new");
 	});
 });

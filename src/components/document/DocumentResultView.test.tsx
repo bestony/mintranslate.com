@@ -3,6 +3,7 @@
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { EMPTY_DOCUMENT_NOTICE } from "#/lib/document/result";
 import { DocumentResultView } from "./DocumentResultView";
 
 describe("document delivery view", () => {
@@ -43,5 +44,13 @@ describe("document delivery view", () => {
 		);
 		expect(html).toContain("未在这份文档中找到可翻译的文本");
 		expect(html).not.toContain("empty.zh-Hans.pdf");
+	});
+
+	it("renders the empty-document notice once when a duplicate notice is supplied", () => {
+		const html = renderToString(
+			<DocumentResultView format="docx" empty notice={EMPTY_DOCUMENT_NOTICE} />,
+		);
+
+		expect(html.split(EMPTY_DOCUMENT_NOTICE).length - 1).toBe(1);
 	});
 });

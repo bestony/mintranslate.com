@@ -17,9 +17,21 @@ import { unzipSync, zipSync } from "fflate";
 /** An OOXML package: its entries, keyed by path inside the zip. */
 export type PackageEntries = Record<string, Uint8Array>;
 
+/** Maximum total size of all entries after decompression. */
+export const MAX_UNCOMPRESSED_DOCUMENT_BYTES = 200 * 1024 * 1024;
+
 /** Read every entry of a package. */
 export function readPackage(bytes: Uint8Array): PackageEntries {
-	return unzipSync(bytes);
+	let totalUncompressedBytes = 0;
+	return unzipSync(bytes, {
+		filter: ({ originalSize }) => {
+			totalUncompressedBytes += originalSize;
+			if (totalUncompressedBytes > MAX_UNCOMPRESSED_DOCUMENT_BYTES) {
+				throw new Error("文档内容无法解析：解压后的内容超过 200 MiB 上限。");
+			}
+			return true;
+		},
+	});
 }
 
 /**

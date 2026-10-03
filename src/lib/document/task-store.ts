@@ -87,6 +87,17 @@ function requestAsPromise<T>(request: IDBRequest<T>): Promise<T> {
 	});
 }
 
+/** Resolve only after a transaction commits, or reject when it aborts. */
+function transactionAsPromise(transaction: IDBTransaction): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const fail = () =>
+			reject(transaction.error ?? new Error("IndexedDB transaction failed"));
+		transaction.oncomplete = () => resolve();
+		transaction.onerror = fail;
+		transaction.onabort = fail;
+	});
+}
+
 /** Persistence surface for tasks. */
 export interface DocumentTaskStore {
 	save(record: DocumentTaskRecord): Promise<void>;
@@ -95,6 +106,8 @@ export interface DocumentTaskStore {
 	remove(id: string): Promise<void>;
 	/** Store the original file for a task. */
 	saveSource(id: string, bytes: Uint8Array): Promise<void>;
+	/** Check whether the original file exists without loading its bytes. */
+	hasSource(id: string): Promise<boolean>;
 	loadSource(id: string): Promise<Uint8Array | undefined>;
 	/** Delete the original file, keeping the task record. */
 	dropSource(id: string): Promise<void>;
@@ -112,8 +125,12 @@ export function createDocumentTaskStore(
 		run: (store: IDBObjectStore) => IDBRequest<T>,
 	): Promise<T> {
 		const transaction = database.transaction(name, mode);
-		const result = await requestAsPromise(run(transaction.objectStore(name)));
-		return result;
+		const request = run(transaction.objectStore(name));
+		if (mode === "readwrite") {
+			await transactionAsPromise(transaction);
+			return request.result;
+		}
+		return requestAsPromise(request);
 	}
 
 	return {
@@ -150,6 +167,15 @@ export function createDocumentTaskStore(
 			);
 		},
 
+		async hasSource(id) {
+			const count = await withStore<number>(
+				SOURCES_STORE,
+				"readonly",
+				(store) => store.count(id),
+			);
+			return count > 0;
+		},
+
 		async loadSource(id) {
 			const found = await withStore<
 				{ id: string; bytes: Uint8Array } | undefined
@@ -170,11 +196,15 @@ export function createDocumentTaskStore(
 
 		async dropStaleSources(keepId) {
 			const tasks = await this.list();
+			const mostRecentResumableId = tasks.find(
+				(task) => task.state === "failed",
+			)?.id;
 			for (const task of tasks) {
-				// Only a task still being worked on needs its source; a terminal task's
-				// source is dead weight of up to 20MB.
 				if (task.id === keepId) continue;
 				if (!isTerminal(task.state)) continue;
+				// Keep one source for the newest failed or cancelled task so it remains
+				// resumable. Succeeded tasks and older terminal tasks are disposable.
+				if (task.id === mostRecentResumableId) continue;
 				await this.dropSource(task.id);
 			}
 		},

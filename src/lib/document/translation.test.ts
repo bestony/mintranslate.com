@@ -2,6 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
+import { createKeyedLimiters } from "../call-control/concurrency";
 import type { Connection } from "../connections/model";
 import { logger } from "../logger";
 import type { TranslationMemoryPort } from "../translation-memory";
@@ -182,6 +183,112 @@ describe("document translation orchestration", () => {
 			expect(result.record.chunks[0]?.target).toBe("完成");
 			expect(result.record.chunks[1]?.target).toBeUndefined();
 			expect(result.record.failureKind).toBe("error");
+		}
+	});
+
+	it("stops queued chunks after a non-retryable failure", async () => {
+		const record = recordWithTexts(["fails", "queued", "also queued"]);
+		const calls: string[] = [];
+		const limiters = createKeyedLimiters(1);
+
+		const result = await translateDocument(
+			{ record, connection, apiKey: "key" },
+			{
+				limiterFor: limiters.for,
+				glossaryMatcher: async () => [],
+				transport: async (request) => {
+					calls.push(request.userContent);
+					if (request.userContent === "fails") {
+						throw new Error("capability failure");
+					}
+					return "should not be sent";
+				},
+			},
+		);
+
+		expect(result.kind).toBe("failed");
+		expect(calls).toEqual(["fails"]);
+	});
+
+	it("stops queued default-transport calls before releasing a failed slot", async () => {
+		const record = recordWithTexts(["fails", "queued", "also queued"]);
+		const limiters = createKeyedLimiters(1);
+		const originalFetch = globalThis.fetch;
+		const requestBodies: string[] = [];
+		globalThis.fetch = (async (_input, init) => {
+			requestBodies.push(typeof init?.body === "string" ? init.body : "");
+			throw new Error("default transport failure");
+		}) as typeof fetch;
+
+		try {
+			const result = await translateDocument(
+				{
+					record,
+					connection: { ...connection, endpoint: "https://model.test/v1" },
+					apiKey: "key",
+				},
+				{
+					limiterFor: limiters.for,
+					glossaryMatcher: async () => [],
+				},
+			);
+
+			expect(result.kind).toBe("failed");
+			expect(requestBodies.length).toBeGreaterThan(0);
+			expect(new Set(requestBodies)).toHaveLength(1);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("wakes a rate-limit backoff when another chunk fails", async () => {
+		const record = recordWithTexts(["fails", "backoff"]);
+		const limiters = createKeyedLimiters(2);
+		let sleepStarted = false;
+		let releaseSleep = () => {};
+		const sleepPending = new Promise<void>((resolve) => {
+			releaseSleep = resolve;
+		});
+
+		try {
+			const resultPromise = translateDocument(
+				{ record, connection, apiKey: "key" },
+				{
+					limiterFor: limiters.for,
+					maxRateLimitRetries: 1,
+					glossaryMatcher: async () => [],
+					sleep: async () => {
+						sleepStarted = true;
+						await sleepPending;
+					},
+					transport: async (request) => {
+						if (request.userContent === "fails") {
+							await waitFor(() => sleepStarted);
+							throw new Error("terminal failure");
+						}
+						throw Object.assign(new Error("rate limited"), {
+							status: 429,
+							headers: { "retry-after": "10" },
+						});
+					},
+				},
+			);
+			const result = await Promise.race([
+				resultPromise.then((value) => ({ kind: "result" as const, value })),
+				new Promise<{ kind: "timeout" }>((resolve) =>
+					setTimeout(() => resolve({ kind: "timeout" }), 250),
+				),
+			]);
+
+			expect(result.kind).toBe("result");
+			if (result.kind === "result") {
+				expect(result.value.kind).toBe("failed");
+				if (result.value.kind === "failed") {
+					expect(result.value.record.failureKind).toBe("error");
+				}
+			}
+		} finally {
+			releaseSleep();
 		}
 	});
 
