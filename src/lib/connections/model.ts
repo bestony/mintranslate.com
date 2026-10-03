@@ -25,9 +25,26 @@ export const PROVIDER_IDS = [
 	"openrouter",
 	"ollama",
 	"custom",
+	"builtin-translator",
+	"builtin-multimodal",
 ] as const;
 
 export type ProviderId = (typeof PROVIDER_IDS)[number];
+
+/** Providers implemented by browser-native Chrome Built-in AI APIs. */
+export const BUILTIN_PROVIDER_IDS = [
+	"builtin-translator",
+	"builtin-multimodal",
+] as const satisfies readonly ProviderId[];
+
+export type BuiltinProviderId = (typeof BUILTIN_PROVIDER_IDS)[number];
+
+/** Built-in connection ids are fixed to their provider ids for idempotent seeding. */
+export const BUILTIN_CONNECTION_IDS = BUILTIN_PROVIDER_IDS;
+
+export function isBuiltinConnectionId(id: string): boolean {
+	return (BUILTIN_CONNECTION_IDS as readonly string[]).includes(id);
+}
 
 /** Whether `value` is a known provider id. */
 export function isProviderId(value: unknown): value is ProviderId {
@@ -35,6 +52,13 @@ export function isProviderId(value: unknown): value is ProviderId {
 		typeof value === "string" &&
 		(PROVIDER_IDS as readonly string[]).includes(value)
 	);
+}
+
+/** Whether a provider is implemented locally by the browser. */
+export function isBuiltinProvider(
+	provider: ProviderId | string | undefined,
+): provider is BuiltinProviderId {
+	return provider === "builtin-translator" || provider === "builtin-multimodal";
 }
 
 /**
@@ -109,9 +133,18 @@ export type ConnectionEdit = Partial<
  * refusal.
  */
 export function activationBlocker(
-	connection: Pick<Connection, "endpoint" | "model" | "status">,
+	connection: Pick<Connection, "endpoint" | "model" | "status"> &
+		Partial<Pick<Connection, "provider" | "statusDetail">>,
 	hasKey: boolean,
 ): string | undefined {
+	if (isBuiltinProvider(connection.provider)) {
+		if (connection.status === "ok") return undefined;
+		if (connection.status === "testing") return "内置能力检查进行中，请稍候";
+		return (
+			connection.statusDetail ??
+			"内置 AI 尚未就绪，请完成模型下载或检查浏览器与设备支持。"
+		);
+	}
 	if (connection.endpoint.trim() === "") return "请填写 Endpoint";
 	if (connection.model.trim() === "") return "请填写 Model";
 	if (!hasKey) return "请填写 API Key";
@@ -125,7 +158,8 @@ export function activationBlocker(
 
 /** Whether a connection may become the active one. */
 export function canActivate(
-	connection: Pick<Connection, "endpoint" | "model" | "status">,
+	connection: Pick<Connection, "endpoint" | "model" | "status"> &
+		Partial<Pick<Connection, "provider" | "statusDetail">>,
 	hasKey: boolean,
 ): boolean {
 	return activationBlocker(connection, hasKey) === undefined;

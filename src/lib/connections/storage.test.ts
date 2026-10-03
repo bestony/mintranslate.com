@@ -147,6 +147,29 @@ describe("defaultConnectionName", () => {
 });
 
 describe("connection serialization", () => {
+	it("round-trips both built-in connections with empty endpoint and model", () => {
+		const builtins = [
+			connection({
+				id: "builtin-translator",
+				provider: "builtin-translator",
+				name: "内置翻译（仅文本）",
+				endpoint: "",
+				model: "",
+				capabilities: { text: true, vision: false },
+			}),
+			connection({
+				id: "builtin-multimodal",
+				provider: "builtin-multimodal",
+				name: "内置多模态（文本与图片）",
+				endpoint: "",
+				model: "",
+				capabilities: { text: true, vision: true },
+			}),
+		];
+		expect(
+			deserializeConnections(serializeConnections(builtins)).value,
+		).toEqual(builtins);
+	});
 	it("round-trips a connection", () => {
 		const original = connection({ id: "a", tier: "advanced" });
 		const restored = deserializeConnections(serializeConnections([original]));
@@ -190,6 +213,15 @@ describe("connection serialization", () => {
 });
 
 describe("key storage", () => {
+	it("never serializes fixed built-in connection ids", () => {
+		const serialized = serializeKeys({
+			"builtin-translator": "must-not-persist",
+			"builtin-multimodal": "must-not-persist",
+			external: "kept",
+		});
+		expect(serialized).not.toContain("must-not-persist");
+		expect(deserializeKeys(serialized)).toEqual({ external: "kept" });
+	});
 	it("round-trips the key map", () => {
 		const keys = { a: "alpha-token-1111" };
 		expect(deserializeKeys(serializeKeys(keys))).toEqual(keys);

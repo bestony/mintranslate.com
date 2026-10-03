@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Analytics } from "#/lib/analytics/track";
+import { createBuiltinLanguageModelClient } from "#/lib/builtin-ai/language-model";
 import { createKeyedLimiters } from "#/lib/call-control/concurrency";
 import type { Connection } from "#/lib/connections/model";
 import type { GlossaryPromptTerm } from "#/lib/connections/styles";
@@ -27,6 +28,8 @@ import {
 	SLOW_RUN_THRESHOLD_MS,
 } from "#/lib/image";
 import { logger } from "#/lib/logger";
+import { BuiltinDownloadNotice } from "../translation/BuiltinDownloadNotice";
+import { useBuiltinDownload } from "../translation/useBuiltinDownload";
 import { ImageDropZone } from "./ImageDropZone";
 import { ImageResultView } from "./ImageResultView";
 
@@ -86,22 +89,37 @@ export function ImageTranslationMode({
 	const [notice, setNotice] = useState<string | undefined>(undefined);
 	const [regions, setRegions] = useState<readonly ImageRegion[]>([]);
 	const [rawText, setRawText] = useState<string | undefined>(undefined);
+	const [glossaryCount, setGlossaryCount] = useState(0);
 	const [imageSrc, setImageSrc] = useState<string | undefined>(undefined);
 	/** Natural size of the processed image, so it is never upscaled for display. */
 	const [imageSize, setImageSize] = useState<
 		{ width: number; height: number } | undefined
 	>(undefined);
 	const [waitedPast, setWaitedPast] = useState(false);
+	const pendingFile = useRef<File | undefined>(undefined);
 
 	const startedAt = useRef<number | undefined>(undefined);
 	/** Submission counter, used as the dedupe key when content hashing is unavailable. */
 	const submissionSeq = useRef(0);
 	const objectUrl = useRef<string | undefined>(undefined);
 
-	const translator = useMemo(
-		() => createImageTranslator({ limiterFor: (id) => limiters.for(id) }),
+	const builtinLanguageModel = useMemo(
+		() => createBuiltinLanguageModelClient(),
 		[],
 	);
+	const translator = useMemo(
+		() =>
+			createImageTranslator({
+				limiterFor: (id) => limiters.for(id),
+				builtinLanguageModel,
+			}),
+		[builtinLanguageModel],
+	);
+	const imageIntentKey = `${connection?.id ?? ""}\u0000${sourceLang}\u0000${targetLang}`;
+	const builtinDownload = useBuiltinDownload({
+		intentKey: imageIntentKey,
+		languageModel: builtinLanguageModel,
+	});
 
 	/**
 	 * Terms to inject, resolved once per run.
@@ -159,8 +177,11 @@ export function ImageTranslationMode({
 
 	const submit = useCallback(
 		async (file: File) => {
+			pendingFile.current = file;
+			builtinDownload.reset();
 			setNotice(undefined);
 			setRawText(undefined);
+			setGlossaryCount(0);
 			setRegions([]);
 			setStage("preparing");
 			setElapsedMs(0);
@@ -207,6 +228,7 @@ export function ImageTranslationMode({
 				});
 
 				const glossaryMatches = await loadGlossaryTerms();
+				setGlossaryCount(glossaryMatches.length);
 				if (glossaryMatches.length > 0) {
 					logger.debug("image.mode.glossary.injected", {
 						requestId,
@@ -239,6 +261,8 @@ export function ImageTranslationMode({
 					imageMimeType: processed.mimeType,
 					imageKey,
 					targetLanguageLabel,
+					sourceLanguage: sourceLang,
+					targetLanguage: targetLang,
 					sourceLanguageLabel,
 					styleLabel,
 					styleDescription,
@@ -289,6 +313,16 @@ export function ImageTranslationMode({
 
 				onResult?.(outcome.regions);
 			} catch (error) {
+				if (
+					builtinDownload.offer(error, imageIntentKey, () => {
+						const retryFile = pendingFile.current;
+						if (retryFile !== undefined) void submit(retryFile);
+					})
+				) {
+					setStage("failed");
+					setNotice(undefined);
+					return;
+				}
 				logger.warn("image.mode.failed", {
 					requestId,
 					reason: error instanceof Error ? error.message : String(error),
@@ -313,6 +347,8 @@ export function ImageTranslationMode({
 			targetLang,
 			targetLanguageLabel,
 			translator,
+			builtinDownload,
+			imageIntentKey,
 		],
 	);
 
@@ -337,6 +373,11 @@ export function ImageTranslationMode({
 					{notice}
 				</p>
 			)}
+
+			<BuiltinDownloadNotice
+				state={builtinDownload.state}
+				onActivate={() => void builtinDownload.activate()}
+			/>
 
 			{progress.busy && (
 				<div className="mt-4 flex flex-wrap items-center gap-4 text-sm">
@@ -400,13 +441,20 @@ export function ImageTranslationMode({
 			)}
 
 			{imageSrc !== undefined && stage === "done" && (
-				<ImageResultView
-					regions={regions}
-					imageSrc={imageSrc}
-					naturalWidth={imageSize?.width}
-					imageAlt="待翻译的图片，识别到的文字区域已在其上标出"
-					rawText={rawText}
-				/>
+				<>
+					<ImageResultView
+						regions={regions}
+						imageSrc={imageSrc}
+						naturalWidth={imageSize?.width}
+						imageAlt="待翻译的图片，识别到的文字区域已在其上标出"
+						rawText={rawText}
+					/>
+					{connection?.provider === "builtin-multimodal" && (
+						<p className="mt-2 text-muted-foreground text-xs">
+							术语已应用：{glossaryCount} 条；当前通道支持翻译风格。
+						</p>
+					)}
+				</>
 			)}
 		</section>
 	);

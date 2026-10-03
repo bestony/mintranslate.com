@@ -11,7 +11,7 @@
  * instead of silently substituting another connection — see `TierResolution`.
  */
 
-import type { Connection, ModelTier } from "./model";
+import { type Connection, isBuiltinProvider, type ModelTier } from "./model";
 
 /** Outcome of resolving one tier. */
 export type TierResolution =
@@ -39,12 +39,12 @@ function strengthScore(connection: Connection): number {
 }
 
 /** Only connections that have passed their test may be used. */
-function usable(connections: readonly Connection[]): Connection[] {
+export function usable(connections: readonly Connection[]): Connection[] {
 	return connections.filter(
 		(connection) =>
 			connection.status === "ok" &&
-			connection.endpoint.trim() !== "" &&
-			connection.model.trim() !== "",
+			(isBuiltinProvider(connection.provider) ||
+				(connection.endpoint.trim() !== "" && connection.model.trim() !== "")),
 	);
 }
 
@@ -116,5 +116,7 @@ export function describeTierTarget(
 ): string {
 	const resolution = resolveTier(tier, connections);
 	if (resolution.kind === "unavailable") return resolution.reason;
-	return `${resolution.connection.name}（${resolution.connection.model}）`;
+	return isBuiltinProvider(resolution.connection.provider)
+		? `${resolution.connection.name}（内置通道）`
+		: `${resolution.connection.name}（${resolution.connection.model}）`;
 }

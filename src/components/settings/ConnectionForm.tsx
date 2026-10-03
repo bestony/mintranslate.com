@@ -21,8 +21,12 @@ import type {
 	ModelTier,
 	ProviderId,
 } from "#/lib/connections/model";
-import { PROVIDER_IDS } from "#/lib/connections/model";
-import { PROVIDER_PRESETS, presetFor } from "#/lib/connections/presets";
+import { isBuiltinProvider } from "#/lib/connections/model";
+import {
+	CONFIGURABLE_PROVIDER_IDS,
+	PROVIDER_PRESETS,
+	presetFor,
+} from "#/lib/connections/presets";
 import { CONNECTION_TEST_TIMEOUT_MS } from "#/lib/connections/test-connection";
 import type {
 	createConnectionTestController,
@@ -123,11 +127,6 @@ export function ConnectionForm({
 	modelListController: injectedModelListController,
 }: ConnectionFormProps) {
 	const [revealKey, setRevealKey] = useState(false);
-	/** Analytics entry point for configuration and connection-test events. */
-	const analytics = useMemo(
-		() => createAnalytics({ byokConfigured: () => true }),
-		[],
-	);
 	const [testing, setTesting] = useState(false);
 	const [result, setResult] = useState<
 		| { ok: true; latencyMs: number }
@@ -136,6 +135,15 @@ export function ConnectionForm({
 	>(undefined);
 
 	const preset = presetFor(connection.provider);
+	const builtin = isBuiltinProvider(connection.provider);
+	/** Analytics entry point for configuration and connection-test events. */
+	const analytics = useMemo(
+		() =>
+			createAnalytics({
+				byokConfigured: () => connection.status === "ok" && !builtin,
+			}),
+		[builtin, connection.status],
+	);
 	const labelClass = "mt-2 block font-medium text-sm";
 	// `min-h-11` gives every text field a 44px touch target. Focus styling is left
 	// to the global `:focus-visible` ring: overriding it with a border colour
@@ -222,24 +230,51 @@ export function ConnectionForm({
 				</span>
 			</div>
 
+			{builtin && (
+				<div className="mt-4 rounded-md border border-border bg-surface p-4 text-sm">
+					<p className="font-medium">
+						{connection.provider === "builtin-translator"
+							? "专用内置翻译通道"
+							: "内置多模态通道"}
+					</p>
+					<p className="mt-2 text-muted-foreground text-xs">
+						{connection.provider === "builtin-translator"
+							? "仅支持文本；不应用术语表与翻译风格。图片任务请切换到内置多模态或外部视觉连接。"
+							: "支持文本与图片；可应用术语表与翻译风格。Prompt API 仅支持英语、日语、西班牙语、德语和法语。"}
+					</p>
+					<p className="mt-4 text-muted-foreground text-xs">
+						模型按工作区当前语言对或目标语言按需检查。需要下载时，工作区会显示明确的下载入口；
+						此处不使用固定语言对判断就绪状态。
+					</p>
+				</div>
+			)}
+
 			<div className="mt-4 grid gap-4 md:grid-cols-2">
-				<label className="block">
+				<label className="block" htmlFor="connection-provider">
 					<span className={labelClass}>服务商</span>
-					<select
-						id="connection-provider"
-						name="provider"
-						className={inputClass}
-						value={connection.provider}
-						onChange={(event) =>
-							onProviderChange(event.target.value as ProviderId)
-						}
-					>
-						{PROVIDER_IDS.map((id) => (
-							<option key={id} value={id}>
-								{presetFor(id)?.label ?? id}
-							</option>
-						))}
-					</select>
+					{builtin ? (
+						<p className="mt-2 min-h-11 rounded-md border border-border bg-surface px-4 py-2 text-sm">
+							{connection.provider === "builtin-translator"
+								? "浏览器内置 Translator"
+								: "浏览器内置 Prompt API"}
+						</p>
+					) : (
+						<select
+							id="connection-provider"
+							name="provider"
+							className={inputClass}
+							value={connection.provider}
+							onChange={(event) =>
+								onProviderChange(event.target.value as ProviderId)
+							}
+						>
+							{CONFIGURABLE_PROVIDER_IDS.map((id) => (
+								<option key={id} value={id}>
+									{presetFor(id)?.label ?? id}
+								</option>
+							))}
+						</select>
+					)}
 				</label>
 
 				<label className="block">
@@ -253,62 +288,70 @@ export function ConnectionForm({
 					/>
 				</label>
 
-				<label className="block">
-					<span className={labelClass}>Endpoint（Base URL）</span>
-					<input
-						id="connection-endpoint"
-						name="connection-endpoint"
-						className={inputClass}
-						value={connection.endpoint}
-						placeholder={preset?.endpoint || "https://your-endpoint/v1"}
-						onChange={(event) => onChange({ endpoint: event.target.value })}
-					/>
-				</label>
+				{!builtin && (
+					<label className="block">
+						<span className={labelClass}>Endpoint（Base URL）</span>
+						<input
+							id="connection-endpoint"
+							name="connection-endpoint"
+							className={inputClass}
+							value={connection.endpoint}
+							placeholder={preset?.endpoint || "https://your-endpoint/v1"}
+							onChange={(event) => onChange({ endpoint: event.target.value })}
+						/>
+					</label>
+				)}
 
 				{/* Shown before a test is run, so the conditions are known before the
 				    user meets the opaque failure the browser would give. */}
-				<EndpointConditionsNotice
-					provider={connection.provider}
-					endpoint={connection.endpoint}
-				/>
+				{!builtin && (
+					<EndpointConditionsNotice
+						provider={connection.provider}
+						endpoint={connection.endpoint}
+					/>
+				)}
 
-				<ModelDiscoveryField
-					connection={connection}
-					apiKey={apiKey}
-					presetModels={preset?.models ?? []}
-					labelClass={labelClass}
-					inputClass={inputClass}
-					onChange={onChange}
-					modelListController={injectedModelListController}
-				/>
+				{!builtin && (
+					<ModelDiscoveryField
+						connection={connection}
+						apiKey={apiKey}
+						presetModels={preset?.models ?? []}
+						labelClass={labelClass}
+						inputClass={inputClass}
+						onChange={onChange}
+						modelListController={injectedModelListController}
+					/>
+				)}
 
-				<label className="block md:col-span-2">
-					<span className={labelClass}>API Key</span>
-					<div className="flex gap-2">
-						<input
-							id="connection-api-key"
-							name="connection-api-key"
-							className={inputClass}
-							type={revealKey ? "text" : "password"}
-							value={apiKey}
-							autoComplete="off"
-							placeholder={apiKey === "" ? "" : maskSecret(apiKey)}
-							onChange={(event) => onKeyChange(event.target.value)}
-						/>
-						<button
-							type="button"
-							className="mt-2 shrink-0 rounded-md border border-input min-h-11 px-4 text-sm"
-							onClick={() => setRevealKey((current) => !current)}
-						>
-							{revealKey ? "隐藏" : "显示"}
-						</button>
-					</div>
-					{!revealKey && apiKey !== "" && (
-						<span className="mt-2 block text-muted-foreground text-xs">
-							当前：{maskSecret(apiKey)}
-						</span>
-					)}
-				</label>
+				{!builtin && (
+					<label className="block md:col-span-2">
+						<span className={labelClass}>API Key</span>
+						<div className="flex gap-2">
+							<input
+								id="connection-api-key"
+								name="connection-api-key"
+								className={inputClass}
+								type={revealKey ? "text" : "password"}
+								value={apiKey}
+								autoComplete="off"
+								placeholder={apiKey === "" ? "" : maskSecret(apiKey)}
+								onChange={(event) => onKeyChange(event.target.value)}
+							/>
+							<button
+								type="button"
+								className="mt-2 shrink-0 rounded-md border border-input min-h-11 px-4 text-sm"
+								onClick={() => setRevealKey((current) => !current)}
+							>
+								{revealKey ? "隐藏" : "显示"}
+							</button>
+						</div>
+						{!revealKey && apiKey !== "" && (
+							<span className="mt-2 block text-muted-foreground text-xs">
+								当前：{maskSecret(apiKey)}
+							</span>
+						)}
+					</label>
+				)}
 			</div>
 
 			<p className="mt-4 text-muted-foreground text-xs">
@@ -382,24 +425,26 @@ export function ConnectionForm({
 				</label>
 			</div>
 
-			<div className="mt-4">
-				<button
-					type="button"
-					className="min-h-11 rounded-md bg-primary-strong px-4 text-primary-foreground text-sm disabled:opacity-50"
-					disabled={
-						testing ||
-						connection.endpoint.trim() === "" ||
-						connection.model.trim() === ""
-					}
-					onClick={runTest}
-				>
-					{testing ? "测试中…" : "测试连接"}
-				</button>
-				<span className="ml-4 text-muted-foreground text-xs">
-					最长等待 {CONNECTION_TEST_TIMEOUT_MS / 1000}{" "}
-					秒；测试会产生一次极小的真实调用。
-				</span>
-			</div>
+			{!builtin && (
+				<div className="mt-4">
+					<button
+						type="button"
+						className="min-h-11 rounded-md bg-primary-strong px-4 text-primary-foreground text-sm disabled:opacity-50"
+						disabled={
+							testing ||
+							connection.endpoint.trim() === "" ||
+							connection.model.trim() === ""
+						}
+						onClick={runTest}
+					>
+						{testing ? "测试中…" : "测试连接"}
+					</button>
+					<span className="ml-4 text-muted-foreground text-xs">
+						最长等待 {CONNECTION_TEST_TIMEOUT_MS / 1000}{" "}
+						秒；测试会产生一次极小的真实调用。
+					</span>
+				</div>
+			)}
 
 			{result && (
 				<div

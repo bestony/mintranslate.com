@@ -19,6 +19,7 @@
 import {
 	CONNECTION_STATUSES,
 	type Connection,
+	isBuiltinConnectionId,
 	isProviderId,
 	type ProviderId,
 } from "./model";
@@ -164,7 +165,10 @@ export function deserializeConnections(
 
 /** Serialize the key map. */
 export function serializeKeys(keys: Readonly<Record<string, string>>): string {
-	return JSON.stringify(keys);
+	const filtered = Object.fromEntries(
+		Object.entries(keys).filter(([id]) => !isBuiltinConnectionId(id)),
+	);
+	return JSON.stringify(filtered);
 }
 
 /** Parse the stored key map, dropping non-string values. */
@@ -183,7 +187,8 @@ export function deserializeKeys(raw: string | null): Record<string, string> {
 
 	const keys: Record<string, string> = {};
 	for (const [id, value] of Object.entries(parsed as Record<string, unknown>)) {
-		if (typeof value === "string") keys[id] = value;
+		if (typeof value === "string" && !isBuiltinConnectionId(id))
+			keys[id] = value;
 	}
 	return keys;
 }

@@ -13,7 +13,11 @@
  */
 
 import { type Analytics, createAnalytics } from "#/lib/analytics/track";
-import { ACTIVE_KEY } from "#/lib/connections/storage";
+import { isBuiltinProvider } from "#/lib/connections/model";
+import {
+	CONNECTIONS_KEY,
+	deserializeConnections,
+} from "#/lib/connections/storage";
 
 /** The one tracker for the page. Created lazily so nothing runs on import. */
 let instance: Analytics | undefined;
@@ -34,11 +38,20 @@ export function analytics(): Analytics {
 function byokConfigured(): boolean {
 	if (typeof window === "undefined") return false;
 	try {
-		const raw = window.localStorage.getItem(ACTIVE_KEY);
-		return raw !== null && raw !== "" && raw !== "null";
+		return hasConfiguredExternalConnection(
+			window.localStorage.getItem(CONNECTIONS_KEY),
+		);
 	} catch {
 		return false;
 	}
+}
+
+/** Whether stored connections include at least one tested external provider. */
+export function hasConfiguredExternalConnection(raw: string | null): boolean {
+	return deserializeConnections(raw).value.some(
+		(connection) =>
+			connection.status === "ok" && !isBuiltinProvider(connection.provider),
+	);
 }
 
 /** Replace the instance. For tests only. */

@@ -68,6 +68,7 @@ export {
 export {
 	assembleImagePrompt,
 	IMAGE_PROMPT_LIMITS,
+	IMAGE_RESPONSE_CONSTRAINT,
 	type ImagePrompt,
 	orderGlossaryTerms,
 	renderGlossarySection,

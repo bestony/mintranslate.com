@@ -220,6 +220,42 @@ describe("track entry point", () => {
 		expect(sent[0].params.model).toBeUndefined();
 	});
 
+	it("does not emit CORS diagnostics for built-in providers", () => {
+		const { analytics, sent } = harness({ id: "G-TEST123" });
+		analytics.track("cors_blocked", {
+			provider: "builtin-translator",
+			endpoint_host: "",
+		});
+		analytics.track("cors_blocked", {
+			provider: "builtin-multimodal",
+			endpoint_host: "",
+		});
+		expect(sent).toHaveLength(0);
+	});
+
+	it("keeps the two built-in providers distinct in success events", () => {
+		const { analytics, sent } = harness({ id: "G-TEST123" });
+		for (const provider of [
+			"builtin-translator",
+			"builtin-multimodal",
+		] as const) {
+			analytics.track("translate_success", {
+				mode: "text",
+				source_lang: "en",
+				target_lang: "ja",
+				provider,
+				model: "",
+				latency_ms: 1,
+				is_streaming: false,
+			});
+		}
+		expect(sent.map(({ params }) => params.provider)).toEqual([
+			"builtin-translator",
+			"builtin-multimodal",
+		]);
+		expect(sent.every(({ params }) => !("endpoint_host" in params))).toBe(true);
+	});
+
 	it("is a no-op without an identifier", () => {
 		const { analytics, sent } = harness();
 		for (const name of ANALYTICS_EVENT_NAMES) {

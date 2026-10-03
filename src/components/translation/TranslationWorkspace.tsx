@@ -29,12 +29,18 @@ import {
 	createThrottledSubmit,
 	reportedHost,
 } from "#/lib/analytics/track";
+import { createBuiltinLanguageModelClient } from "#/lib/builtin-ai/language-model";
+import { createBuiltinTranslatorClient } from "#/lib/builtin-ai/translator";
 import { createKeyedLimiters } from "#/lib/call-control/concurrency";
 import {
 	attributeFailure,
 	type FailureAttribution,
 } from "#/lib/connections/attribution";
-import type { Connection, ProviderId } from "#/lib/connections/model";
+import {
+	type Connection,
+	isBuiltinProvider,
+	type ProviderId,
+} from "#/lib/connections/model";
 import { createModelCaller } from "#/lib/connections/model-caller";
 import { CUSTOM_INSTRUCTION_KEY, STYLE_KEY } from "#/lib/connections/storage";
 import { useConnectionStore } from "#/lib/connections/store";
@@ -99,11 +105,13 @@ import {
 	SpeechRateControl,
 	useSpeech,
 } from "../output/SpeechControls";
+import { BuiltinDownloadNotice } from "./BuiltinDownloadNotice";
 import {
 	LanguagePicker,
 	languageChipLabel,
 	selectedSourceLanguage,
 } from "./LanguagePicker";
+import { useBuiltinDownload } from "./useBuiltinDownload";
 
 /**
  * How the modifier key is shown for the current platform.
@@ -226,6 +234,36 @@ function UnconfiguredConnectionLink() {
 	);
 }
 
+/** Whether the current channel can truthfully report glossary usage. */
+export function shouldShowGlossarySummary(
+	provider: string | undefined,
+): boolean {
+	return provider !== "builtin-translator";
+}
+
+/** Select an explicit connection, or the built-in channel for the current mode. */
+export function selectWorkspaceConnection(
+	activeConnection: Connection | undefined,
+	connections: readonly Connection[],
+	mode: WorkspaceMode,
+): Connection | undefined {
+	const builtinCandidate = connections.find((connection) => {
+		if (mode === "images" && connection.provider !== "builtin-multimodal")
+			return false;
+		if (mode !== "images" && connection.provider !== "builtin-translator")
+			return false;
+		if (connection.status === undefined || connection.status === "ok")
+			return true;
+		// Readiness is pair/language scoped. A failed fixed-pair probe must not hide
+		// the workspace action for the concrete pair the user is translating.
+		return (
+			connection.statusDetail?.includes("下载") === true ||
+			connection.statusDetail?.includes("语言对") === true
+		);
+	});
+	return activeConnection ?? builtinCandidate;
+}
+
 export function TranslationWorkspace() {
 	const store = useConnectionStore();
 	const modifier = useModifierLabel();
@@ -302,7 +340,11 @@ export function TranslationWorkspace() {
 	const [promptStyle, setPromptStyle] = useState<TranslationStyleId>("free");
 	const [customInstruction, setCustomInstruction] = useState("");
 
-	const active: Connection | undefined = store.activeConnection;
+	const active = selectWorkspaceConnection(
+		store.activeConnection,
+		store.connections,
+		mode,
+	);
 	const activeId = active?.id;
 
 	/**
@@ -314,8 +356,11 @@ export function TranslationWorkspace() {
 	 */
 	const byokConfigured = useRef(false);
 	useEffect(() => {
-		byokConfigured.current = store.activeId !== null;
-	}, [store.activeId]);
+		byokConfigured.current = store.connections.some(
+			(connection) =>
+				connection.status === "ok" && !isBuiltinProvider(connection.provider),
+		);
+	}, [store.connections]);
 	const analytics = useMemo(
 		() => createAnalytics({ byokConfigured: () => byokConfigured.current }),
 		[],
@@ -336,6 +381,19 @@ export function TranslationWorkspace() {
 			}),
 		[analytics],
 	);
+
+	/** One main-thread browser translator client shared by calls and activation UI. */
+	const builtinTranslator = useMemo(() => createBuiltinTranslatorClient(), []);
+	const builtinLanguageModel = useMemo(
+		() => createBuiltinLanguageModelClient(),
+		[],
+	);
+	const textIntentKey = `${active?.id ?? ""}\u0000${sourceLang}\u0000${targetLang}\u0000${text}`;
+	const builtinDownload = useBuiltinDownload({
+		intentKey: textIntentKey,
+		translator: builtinTranslator,
+		languageModel: builtinLanguageModel,
+	});
 
 	/**
 	 * Report a language change.
@@ -365,9 +423,17 @@ export function TranslationWorkspace() {
 
 	/** Single caller instance: it owns the per-connection limits and flights. */
 	const caller = useMemo(
-		() => createModelCaller({ limiterFor: (id) => limiters.for(id) }),
-		[],
+		() =>
+			createModelCaller({
+				limiterFor: (id) => limiters.for(id),
+				builtinTranslator,
+				builtinLanguageModel,
+			}),
+		[builtinLanguageModel, builtinTranslator],
 	);
+	const controllerRef = useRef<
+		ReturnType<typeof createTranslationController> | undefined
+	>(undefined);
 
 	// Pick up the style chosen in settings. Read once: the workspace does not own
 	// these values, it only consumes them.
@@ -508,6 +574,8 @@ export function TranslationWorkspace() {
 		analytics,
 		reportSubmit,
 		persistHistory,
+		builtinDownload,
+		textIntentKey,
 	};
 	const live = useRef(liveValues);
 	// Declared before the effect that feeds the controller, so a request started
@@ -521,10 +589,14 @@ export function TranslationWorkspace() {
 		() =>
 			createTranslationController({
 				glossaryVersion: getGlossaryVersion,
-				glossaryMatcher: matchTerms,
+				glossaryMatcher: async (text, pair) =>
+					live.current.active?.provider === "builtin-translator"
+						? []
+						: matchTerms(text, pair),
 				callbacks: {
 					onStart: (_requestId, input) => {
-						const { reportSubmit } = live.current;
+						const { reportSubmit, builtinDownload } = live.current;
+						builtinDownload.reset();
 						// Detection belongs to the current input. Clear the previous result
 						// before a new request so the chip cannot show stale language data.
 						detectedRef.current = undefined;
@@ -566,10 +638,9 @@ export function TranslationWorkspace() {
 							detectedInput?.sourceLang === AUTO_DETECT &&
 							detectedRef.current === undefined
 						) {
-							// The current model contract returns translated text only. Keep the
-							// existing fallback until a structured detection field is available.
 							const detectedLanguage =
-								detectedInput.targetLang === "en" ? "zh-Hans" : "en";
+								metadata?.detectedLang?.code ??
+								(detectedInput.targetLang === "en" ? "zh-Hans" : "en");
 							detectedRef.current = detectedLanguage;
 							setDetected(detectedLanguage);
 						}
@@ -627,7 +698,18 @@ export function TranslationWorkspace() {
 						});
 					},
 					onFailure: (_id, error) => {
-						const { active, analytics } = live.current;
+						const { active, analytics, builtinDownload, textIntentKey } =
+							live.current;
+						if (
+							builtinDownload.offer(error, textIntentKey, () =>
+								controllerRef.current?.retry(),
+							)
+						) {
+							setPending(false);
+							setFailure(undefined);
+							setOutput("");
+							return;
+						}
 						// The input is deliberately left untouched, and any previous
 						// successful output stays until a new success replaces it.
 						setPending(false);
@@ -660,7 +742,8 @@ export function TranslationWorkspace() {
 						// signal. The host is hashed for custom endpoints by `reportedHost`.
 						if (
 							attribution.type === "cors_or_network" &&
-							active !== undefined
+							active !== undefined &&
+							!isBuiltinProvider(active.provider)
 						) {
 							void reportedHost(
 								active.endpoint,
@@ -719,6 +802,9 @@ export function TranslationWorkspace() {
 						requirement: "text",
 						systemInstruction: prompt.systemInstruction,
 						userContent: prompt.userContent,
+						rawText: input.text,
+						sourceLanguage: input.sourceLang,
+						targetLanguage: input.targetLang,
 						onChunk,
 					});
 
@@ -747,11 +833,18 @@ export function TranslationWorkspace() {
 						requestId,
 						signal: signal.aborted,
 					});
-					return { text: outcome.text, glossaryMatches };
+					return {
+						text: outcome.text,
+						glossaryMatches,
+						...(outcome.metadata?.detectedLang !== undefined && {
+							detectedLang: outcome.metadata.detectedLang,
+						}),
+					};
 				},
 			}),
 		[caller],
 	);
+	controllerRef.current = controller;
 
 	// Abandon pending and in-flight work when the workspace unmounts.
 	useEffect(() => () => controller.cancel(), [controller]);
@@ -1260,6 +1353,11 @@ export function TranslationWorkspace() {
 							<p className="text-muted-foreground text-sm">翻译中…</p>
 						)}
 
+						<BuiltinDownloadNotice
+							state={builtinDownload.state}
+							onActivate={() => void builtinDownload.activate()}
+						/>
+
 						{failure !== undefined && (
 							<div className="rounded-md border border-border bg-surface p-4 text-sm">
 								<p>{failure}</p>
@@ -1298,27 +1396,30 @@ export function TranslationWorkspace() {
 							className="mt-2 flex flex-wrap items-start gap-2 text-muted-foreground text-xs"
 							aria-live="polite"
 						>
-							<span>术语命中：{glossaryMatches.length} 条</span>
+							{shouldShowGlossarySummary(active?.provider) && (
+								<span>术语命中：{glossaryMatches.length} 条</span>
+							)}
 							{memoryReferenceCount > 0 && (
 								<span>参考译文：{memoryReferenceCount} 条</span>
 							)}
 							{memoryHit && <span>来自翻译记忆</span>}
-							{glossaryMatches.length > 0 && (
-								<details className="basis-full">
-									<summary className="min-h-11 cursor-pointer py-2">
-										查看命中术语
-									</summary>
-									<ul className="space-y-2 border-border border-l-2 pl-4">
-										{glossaryMatches.map((match) => (
-											<li
-												key={`${match.start}-${match.end}-${match.source}-${match.target}`}
-											>
-												{match.source} → {match.target}
-											</li>
-										))}
-									</ul>
-								</details>
-							)}
+							{shouldShowGlossarySummary(active?.provider) &&
+								glossaryMatches.length > 0 && (
+									<details className="basis-full">
+										<summary className="min-h-11 cursor-pointer py-2">
+											查看命中术语
+										</summary>
+										<ul className="space-y-2 border-border border-l-2 pl-4">
+											{glossaryMatches.map((match) => (
+												<li
+													key={`${match.start}-${match.end}-${match.source}-${match.target}`}
+												>
+													{match.source} → {match.target}
+												</li>
+											))}
+										</ul>
+									</details>
+								)}
 						</div>
 					)}
 

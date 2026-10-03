@@ -10,7 +10,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
+import type { BuiltinLanguageModelClient } from "../builtin-ai/language-model";
 import { createConcurrencyLimiter } from "../call-control/concurrency";
 import type { Connection } from "../connections/model";
 import { createImageTranslator } from "./controller";
@@ -71,12 +71,101 @@ function translator(overrides: Record<string, unknown> = {}) {
 	});
 }
 
+function builtinModel(prompt = GOOD_RESPONSE): BuiltinLanguageModelClient {
+	return {
+		availability: vi.fn().mockResolvedValue({ state: "available" }),
+		create: vi.fn(),
+		prompt: vi.fn().mockResolvedValue(prompt),
+		promptStreaming: vi.fn().mockResolvedValue(prompt),
+		destroy: vi.fn(),
+	};
+}
+
 beforeEach(() => {
 	chatMock.mockReset();
 	chatMock.mockResolvedValue(GOOD_RESPONSE);
 });
 
 describe("successful translation", () => {
+	it("routes built-in multimodal calls through the local session with a constraint", async () => {
+		const languageModel = builtinModel();
+		const outcome = await translator({
+			builtinLanguageModel: languageModel,
+		}).translate(
+			request({
+				connection: connection({
+					id: "builtin-multimodal",
+					provider: "builtin-multimodal",
+					endpoint: "",
+					model: "",
+				}),
+				targetLanguageLabel: "English",
+				targetLanguage: "en",
+				sourceLanguage: "ja",
+			}),
+		);
+		expect(outcome.kind).toBe("result");
+		expect(languageModel.prompt).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: expect.any(String),
+				images: expect.any(Array),
+			}),
+			expect.objectContaining({ responseConstraint: expect.any(Object) }),
+		);
+		expect(chatMock).not.toHaveBeenCalled();
+	});
+
+	it("includes glossary and style instructions in the local prompt", async () => {
+		const languageModel = builtinModel();
+		await translator({ builtinLanguageModel: languageModel }).translate(
+			request({
+				connection: connection({
+					id: "builtin-multimodal",
+					provider: "builtin-multimodal",
+					endpoint: "",
+					model: "",
+				}),
+				targetLanguageLabel: "English",
+				targetLanguage: "en",
+				sourceLanguage: "ja",
+				styleLabel: "简洁",
+				glossaryMatches: [{ source: "API", target: "接口" }],
+			}),
+		);
+
+		const promptMock = languageModel.prompt as unknown as ReturnType<
+			typeof vi.fn
+		>;
+		const input = promptMock.mock.calls[0]?.[0] as {
+			text: string;
+		};
+		expect(input.text).toContain("API => 接口");
+		expect(input.text).toContain("translate it into English");
+		expect(promptMock.mock.calls[0]?.[1]).toEqual(
+			expect.objectContaining({ responseConstraint: expect.any(Object) }),
+		);
+	});
+
+	it("rejects unsupported built-in target languages before any model call", async () => {
+		const languageModel = builtinModel();
+		const outcome = await translator({
+			builtinLanguageModel: languageModel,
+		}).translate(
+			request({
+				connection: connection({
+					id: "builtin-multimodal",
+					provider: "builtin-multimodal",
+					endpoint: "",
+					model: "",
+				}),
+				targetLanguage: "zh-Hans",
+			}),
+		);
+		expect(outcome).toMatchObject({ kind: "refused" });
+		expect(languageModel.prompt).not.toHaveBeenCalled();
+		expect(chatMock).not.toHaveBeenCalled();
+	});
+
 	it("returns parsed regions", async () => {
 		const outcome = await translator().translate(request());
 		expect(outcome.kind).toBe("result");

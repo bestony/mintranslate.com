@@ -30,6 +30,12 @@ export const FEATURE_KINDS = [
 
 export type FeatureKind = (typeof FEATURE_KINDS)[number];
 
+/** Minimal connection information needed by the offline rule. */
+export interface OfflineConnection {
+	readonly provider: string;
+	readonly status: string;
+}
+
 /** Features that cannot work without a network. */
 const NETWORK_REQUIRED: readonly FeatureKind[] = [
 	"translation",
@@ -38,7 +44,18 @@ const NETWORK_REQUIRED: readonly FeatureKind[] = [
 ];
 
 /** Whether a feature requires a network at all. */
-export function requiresNetwork(kind: FeatureKind): boolean {
+export function requiresNetwork(
+	kind: FeatureKind,
+	connection?: OfflineConnection,
+): boolean {
+	if (
+		kind === "translation" &&
+		connection?.status === "ok" &&
+		(connection.provider === "builtin-translator" ||
+			connection.provider === "builtin-multimodal")
+	) {
+		return false;
+	}
 	return NETWORK_REQUIRED.includes(kind);
 }
 
@@ -46,10 +63,11 @@ export function requiresNetwork(kind: FeatureKind): boolean {
 export function isFeatureAvailable(
 	kind: FeatureKind,
 	online: boolean,
+	connection?: OfflineConnection,
 ): boolean {
 	// Local features never become unavailable: browsing history offline is exactly
 	// the case offline support exists for.
-	return online || !requiresNetwork(kind);
+	return online || !requiresNetwork(kind, connection);
 }
 
 /**
@@ -61,8 +79,9 @@ export function isFeatureAvailable(
 export function unavailableReason(
 	kind: FeatureKind,
 	online: boolean,
+	connection?: OfflineConnection,
 ): string | undefined {
-	if (isFeatureAvailable(kind, online)) return undefined;
+	if (isFeatureAvailable(kind, online, connection)) return undefined;
 
 	switch (kind) {
 		case "translation":
