@@ -42,6 +42,7 @@ export interface BuiltinLanguageModelPromptOptions {
 	readonly responseConstraint?: unknown;
 	readonly targetLanguage?: string;
 	readonly systemInstruction?: string;
+	readonly onChunk?: (text: string) => void;
 }
 
 /** Error raised when a session needs explicit activation or is unavailable. */
@@ -266,6 +267,7 @@ export function createBuiltinLanguageModelClient(
 				})) {
 					promptOptions.signal?.throwIfAborted();
 					text += chunk;
+					promptOptions.onChunk?.(chunk);
 				}
 				return text;
 			});

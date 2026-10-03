@@ -141,6 +141,21 @@ describe("built-in LanguageModel client", () => {
 		expect(second.destroy).toHaveBeenCalledOnce();
 	});
 
+	it("forwards each Prompt API streaming chunk to onChunk", async () => {
+		const current = session();
+		const api: BuiltinLanguageModelApi = {
+			availability: vi.fn().mockResolvedValue("available"),
+			create: vi.fn().mockResolvedValue(current),
+		};
+		const client = createBuiltinLanguageModelClient({ api });
+		const onChunk = vi.fn();
+
+		await expect(
+			client.promptStreaming({ text: "read" }, { onChunk }),
+		).resolves.toBe("[{}]");
+		expect(onChunk.mock.calls).toEqual([["["], ["{}"], ["]"]]);
+	});
+
 	it("forwards an abort signal to the local session", async () => {
 		const current = session();
 		const api: BuiltinLanguageModelApi = {

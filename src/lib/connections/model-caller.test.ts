@@ -72,6 +72,54 @@ describe("model caller — capability refusal happens before any request", () =>
 		);
 	});
 
+	it("passes the streaming callback to the built-in multimodal model", async () => {
+		const onChunk = vi.fn();
+		const promptStreaming = vi
+			.fn()
+			.mockImplementation(
+				async (
+					_input: unknown,
+					options: { readonly onChunk?: (chunk: string) => void },
+				) => {
+					options.onChunk?.("partial");
+					return "complete";
+				},
+			);
+		const builtinLanguageModel = {
+			availability: vi.fn(),
+			create: vi.fn(),
+			prompt: vi.fn(),
+			promptStreaming,
+			destroy: vi.fn(),
+		} as unknown as BuiltinLanguageModelClient;
+		const caller = createModelCaller({
+			limiterFor: () => createConcurrencyLimiter(),
+			builtinLanguageModel,
+		});
+
+		await expect(
+			caller.call({
+				connection: connection({
+					id: "builtin-multimodal",
+					provider: "builtin-multimodal",
+					endpoint: "",
+					model: "",
+					capabilities: { text: true, vision: true },
+				}),
+				apiKey: "",
+				requirement: "text",
+				userContent: "translate this",
+				targetLanguage: "ja",
+				onChunk,
+			}),
+		).resolves.toEqual({ kind: "result", text: "complete" });
+		expect(onChunk).toHaveBeenCalledWith("partial");
+		expect(promptStreaming).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ onChunk }),
+		);
+	});
+
 	it("routes the built-in translator on the main thread without an adapter", async () => {
 		const translate = vi.fn().mockResolvedValue({
 			text: "你好",

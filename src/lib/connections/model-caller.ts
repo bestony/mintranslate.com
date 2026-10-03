@@ -354,12 +354,14 @@ async function performCall(
 						responseConstraint: request.responseConstraint,
 						targetLanguage: request.targetLanguage,
 						systemInstruction: request.systemInstruction,
+						onChunk: request.onChunk,
 					})
 				: await builtinLanguageModel.prompt(input, {
 						signal,
 						responseConstraint: request.responseConstraint,
 						targetLanguage: request.targetLanguage,
 						systemInstruction: request.systemInstruction,
+						onChunk: request.onChunk,
 					});
 			return { text };
 		}
