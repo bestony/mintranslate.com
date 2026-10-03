@@ -219,6 +219,22 @@ export function shouldShowGlossarySummary(
 	return provider !== "builtin-translator";
 }
 
+/** Select an explicit connection, or the built-in channel for the current mode. */
+export function selectWorkspaceConnection(
+	activeConnection: Connection | undefined,
+	usableConnections: readonly Connection[],
+	mode: WorkspaceMode,
+): Connection | undefined {
+	return (
+		activeConnection ??
+		usableConnections.find((connection) =>
+			mode === "images"
+				? connection.provider === "builtin-multimodal"
+				: connection.provider === "builtin-translator",
+		)
+	);
+}
+
 export function TranslationWorkspace() {
 	const store = useConnectionStore();
 	const modifier = useModifierLabel();
@@ -295,13 +311,11 @@ export function TranslationWorkspace() {
 	const [promptStyle, setPromptStyle] = useState<TranslationStyleId>("free");
 	const [customInstruction, setCustomInstruction] = useState("");
 
-	const active: Connection | undefined =
-		store.activeConnection ??
-		store.usableConnections.find((connection) =>
-			mode === "images"
-				? connection.provider === "builtin-multimodal"
-				: connection.provider === "builtin-translator",
-		);
+	const active = selectWorkspaceConnection(
+		store.activeConnection,
+		store.usableConnections,
+		mode,
+	);
 	const activeId = active?.id;
 
 	/**

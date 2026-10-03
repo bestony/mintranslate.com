@@ -61,6 +61,7 @@ import { act, Profiler } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	selectWorkspaceConnection,
 	shouldShowGlossarySummary,
 	TranslationWorkspace,
 } from "#/components/translation/TranslationWorkspace";
@@ -97,6 +98,24 @@ describe("TranslationWorkspace render stability", () => {
 		expect(shouldShowGlossarySummary("builtin-translator")).toBe(false);
 		expect(shouldShowGlossarySummary("builtin-multimodal")).toBe(true);
 		expect(shouldShowGlossarySummary("openai")).toBe(true);
+	});
+
+	it("selects the matching built-in channel when no connection is active", () => {
+		const translator = {
+			id: "builtin-translator",
+			provider: "builtin-translator",
+		} as never;
+		const multimodal = {
+			id: "builtin-multimodal",
+			provider: "builtin-multimodal",
+		} as never;
+
+		expect(
+			selectWorkspaceConnection(undefined, [translator, multimodal], "text"),
+		).toBe(translator);
+		expect(
+			selectWorkspaceConnection(undefined, [translator, multimodal], "images"),
+		).toBe(multimodal);
 	});
 
 	let container: HTMLDivElement;
