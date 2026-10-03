@@ -3,6 +3,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { Connection } from "../connections/model";
+import { createKeyedLimiters } from "../call-control/concurrency";
 import { logger } from "../logger";
 import type { TranslationMemoryPort } from "../translation-memory";
 import type { DocumentTaskRecord, TextChunk } from "./model";
@@ -183,6 +184,30 @@ describe("document translation orchestration", () => {
 			expect(result.record.chunks[1]?.target).toBeUndefined();
 			expect(result.record.failureKind).toBe("error");
 		}
+	});
+
+	it("stops queued chunks after a non-retryable failure", async () => {
+		const record = recordWithTexts(["fails", "queued", "also queued"]);
+		const calls: string[] = [];
+		const limiters = createKeyedLimiters(1);
+
+		const result = await translateDocument(
+			{ record, connection, apiKey: "key" },
+			{
+				limiterFor: limiters.for,
+				glossaryMatcher: async () => [],
+				transport: async (request) => {
+					calls.push(request.userContent);
+					if (request.userContent === "fails") {
+						throw new Error("capability failure");
+					}
+					return "should not be sent";
+				},
+			},
+		);
+
+		expect(result.kind).toBe("failed");
+		expect(calls).toEqual(["fails"]);
 	});
 
 	it("resumes only unfinished chunks", async () => {

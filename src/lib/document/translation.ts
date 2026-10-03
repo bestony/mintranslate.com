@@ -116,6 +116,13 @@ class DocumentCancelledError extends Error {
 	}
 }
 
+class DocumentStoppedError extends Error {
+	constructor() {
+		super("document translation stopped");
+		this.name = "DocumentStoppedError";
+	}
+}
+
 function defaultGlossaryMatcher(
 	text: string,
 	pair: { readonly sl: string; readonly tl: string },
@@ -211,6 +218,48 @@ export async function translateDocument(
 	const signal = request.signal;
 	const limiterFor =
 		deps.limiterFor ?? ((id: string) => defaultLimiters.for(id));
+	const guardedLimiterFor = (connectionId: string): ConcurrencyLimiter => {
+		const limiter = limiterFor(connectionId);
+		return {
+			run: (task, isLatest) =>
+				limiter.run(
+					async () => {
+						if (stopped || (isLatest !== undefined && !isLatest()))
+							throw new DocumentStoppedError();
+						return task();
+					},
+				),
+			active: () => limiter.active(),
+			queued: () => limiter.queued(),
+		};
+	};
+	const suppliedTransport = deps.transport;
+	const guardedTransport =
+		suppliedTransport === undefined
+			? undefined
+			: async (modelRequest: ModelCallRequest, callSignal: AbortSignal) => {
+				try {
+					return await suppliedTransport(modelRequest, callSignal);
+				} catch (error) {
+					const status = statusOf(error);
+					let shouldStop = !isRateLimited(status);
+					if (!shouldStop) {
+						const attemptText = modelRequest.dedupeKey?.match(/:(\d+)$/)?.[1];
+						const attemptsSoFar =
+							attemptText === undefined ? 0 : Number(attemptText);
+						const decision = decideRetry({
+							attemptsSoFar,
+							retryAfter: parseRetryAfter(retryAfterOf(error)),
+							...(deps.maxRateLimitRetries !== undefined && {
+								policy: { maxRetries: deps.maxRateLimitRetries },
+							}),
+						});
+						shouldStop = decision.kind !== "retry";
+					}
+					if (shouldStop) stopped = true;
+					throw error;
+				}
+			};
 	const sleep =
 		deps.sleep ??
 		((milliseconds: number) =>
@@ -332,8 +381,8 @@ export async function translateDocument(
 				abortIfNeeded(signal);
 				if (stopped) return;
 				const caller = createModelCaller({
-					limiterFor,
-					transport: deps.transport,
+					limiterFor: guardedLimiterFor,
+					transport: guardedTransport,
 				});
 				callers.add(caller);
 				try {
@@ -352,6 +401,7 @@ export async function translateDocument(
 					if (outcome.kind === "refused") {
 						if (outcome.refusal.kind === "superseded" && signal?.aborted)
 							throw new DocumentCancelledError();
+						stopped = true;
 						if (outcome.refusal.kind === "mixed_content")
 							throw new DocumentTranslationError(
 								"mixed content",
@@ -402,6 +452,7 @@ export async function translateDocument(
 							continue;
 						}
 					}
+					stopped = true;
 					throw error;
 				} finally {
 					callers.delete(caller);
