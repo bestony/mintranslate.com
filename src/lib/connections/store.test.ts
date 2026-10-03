@@ -36,6 +36,16 @@ describe("built-in connection seeding", () => {
 		).toEqual({ translator: true, multimodal: false });
 	});
 
+	it("keeps the Translator channel available without the optional detector", () => {
+		expect(
+			builtinConnectionSupport({
+				translator: true,
+				languageDetector: false,
+				languageModel: false,
+			}),
+		).toEqual({ translator: true, multimodal: false });
+	});
+
 	it("seeds each supported connection once and preserves external connections", () => {
 		const first = seedBuiltinConnections(
 			[connection({ id: "external" })],
@@ -87,9 +97,9 @@ describe("built-in connection seeding", () => {
 			provider: "builtin-multimodal",
 			endpoint: "",
 			model: "",
-			status: "failed",
+			status: "ok",
 		});
-		expect(multimodal?.statusDetail).toContain("下载");
+		expect(multimodal?.statusDetail).toBeUndefined();
 	});
 
 	it("strips fixed built-in ids from the key map", () => {

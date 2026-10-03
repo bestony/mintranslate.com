@@ -205,7 +205,7 @@ export async function queryTranslatorAvailability(
 
 /** Query Prompt API readiness for a target language. */
 export async function queryLanguageModelAvailability(
-	targetLanguage: string,
+	targetLanguage?: string,
 	options: {
 		readonly api?: BuiltinLanguageModelApi;
 		readonly scope?: BuiltinApiScope;
@@ -215,7 +215,7 @@ export async function queryLanguageModelAvailability(
 		options.api ??
 		(options.scope ?? (globalThis as BuiltinApiScope)).LanguageModel;
 	if (api === undefined) return { state: "unavailable", reason: "browser" };
-	if (!isPromptApiLanguage(targetLanguage)) {
+	if (targetLanguage !== undefined && !isPromptApiLanguage(targetLanguage)) {
 		return { state: "unavailable", reason: "language-pair" };
 	}
 
@@ -270,18 +270,7 @@ export function deriveBuiltinConnectionStatus(
 	const normalized: BuiltinReadiness =
 		typeof readiness === "string" ? { state: readiness } : readiness;
 
-	if (normalized.state === "available") return { status: "ok" };
-
-	if (normalized.state === "downloadable") {
-		return {
-			status: "failed",
-			statusDetail: "内置模型需要下载，请点击下载并激活。",
-		};
-	}
-
-	if (normalized.state === "downloading") {
-		return { status: "failed", statusDetail: "内置模型正在下载，请稍候。" };
-	}
+	if (normalized.state !== "unavailable") return { status: "ok" };
 
 	const details: Record<BuiltinUnavailableReason, string> = {
 		browser: "当前浏览器不支持内置 AI。",
