@@ -39,6 +39,13 @@ export const BUILTIN_PROVIDER_IDS = [
 
 export type BuiltinProviderId = (typeof BUILTIN_PROVIDER_IDS)[number];
 
+/** Built-in connection ids are fixed to their provider ids for idempotent seeding. */
+export const BUILTIN_CONNECTION_IDS = BUILTIN_PROVIDER_IDS;
+
+export function isBuiltinConnectionId(id: string): boolean {
+	return (BUILTIN_CONNECTION_IDS as readonly string[]).includes(id);
+}
+
 /** Whether `value` is a known provider id. */
 export function isProviderId(value: unknown): value is ProviderId {
 	return (
