@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-
+import type { BuiltinLanguageModelApi } from "./capability";
 import {
 	deriveBuiltinConnectionStatus,
 	detectBuiltinCapabilities,
@@ -8,6 +8,7 @@ import {
 	queryTranslatorAvailability,
 	validatePromptLanguagePair,
 } from "./capability";
+import { createBuiltinLanguageModelClient } from "./language-model";
 
 describe("Built-in AI capability detection", () => {
 	it("only inspects API presence", () => {
@@ -60,15 +61,53 @@ describe("Built-in AI capability detection", () => {
 			api: { availability, create: vi.fn() },
 		});
 		expect(result).toEqual({ state: "available" });
-		expect(availability).toHaveBeenCalledWith(
-			expect.objectContaining({
-				language: "ja",
-				expectedInputs: [{ type: "text" }, { type: "image" }],
-				expectedOutputs: [{ type: "text" }],
-			}),
-		);
+		expect(availability).toHaveBeenCalledWith({
+			expectedInputs: [
+				{ type: "text", languages: ["en", "ja", "es", "de", "fr"] },
+				{ type: "image" },
+			],
+			expectedOutputs: [{ type: "text", languages: ["ja"] }],
+		});
 		expect(fetchSpy).not.toHaveBeenCalled();
 		fetchSpy.mockRestore();
+	});
+
+	it("uses the same language options for readiness and session creation", async () => {
+		const availability = vi.fn().mockResolvedValue("available");
+		const create = vi.fn().mockResolvedValue({
+			prompt: vi.fn().mockResolvedValue("ok"),
+			promptStreaming: vi.fn(),
+			destroy: vi.fn(),
+		});
+		const api = { availability, create } as unknown as BuiltinLanguageModelApi;
+
+		await queryLanguageModelAvailability("ja", { api });
+		const client = createBuiltinLanguageModelClient({ api });
+		await client.prompt({ text: "translate" }, { targetLanguage: "ja" });
+
+		const availabilityOptions = availability.mock.calls[0]?.[0];
+		const createOptions = create.mock.calls[0]?.[0];
+		expect(availabilityOptions).toEqual(
+			expect.objectContaining({
+				expectedInputs: [
+					expect.objectContaining({
+						type: "text",
+						languages: expect.any(Array),
+					}),
+					{ type: "image" },
+				],
+				expectedOutputs: [
+					expect.objectContaining({ type: "text", languages: ["ja"] }),
+				],
+			}),
+		);
+		expect(availabilityOptions).not.toHaveProperty("language");
+		expect(createOptions.expectedInputs).toEqual(
+			availabilityOptions.expectedInputs,
+		);
+		expect(createOptions.expectedOutputs).toEqual(
+			availabilityOptions.expectedOutputs,
+		);
 	});
 
 	it("rejects Prompt API languages before a readiness call", async () => {
@@ -79,6 +118,24 @@ describe("Built-in AI capability detection", () => {
 		expect(result).toEqual({ state: "unavailable", reason: "language-pair" });
 		expect(availability).not.toHaveBeenCalled();
 	});
+
+	it("queries language-neutral Prompt capability without a fixed target", async () => {
+		const availability = vi.fn().mockResolvedValue("downloadable");
+		const result = await queryLanguageModelAvailability(undefined, {
+			api: { availability, create: vi.fn() },
+		});
+
+		expect(result).toEqual({ state: "downloadable" });
+		expect(availability).toHaveBeenCalledWith({
+			expectedInputs: [
+				{ type: "text", languages: ["en", "ja", "es", "de", "fr"] },
+				{ type: "image" },
+			],
+			expectedOutputs: [
+				{ type: "text", languages: ["en", "ja", "es", "de", "fr"] },
+			],
+		});
+	});
 });
 
 describe("Built-in readiness to connection state", () => {
@@ -87,12 +144,10 @@ describe("Built-in readiness to connection state", () => {
 			status: "ok",
 		});
 		expect(deriveBuiltinConnectionStatus("downloadable")).toMatchObject({
-			status: "failed",
-			statusDetail: expect.stringContaining("下载"),
+			status: "ok",
 		});
 		expect(deriveBuiltinConnectionStatus("downloading")).toMatchObject({
-			status: "failed",
-			statusDetail: expect.stringContaining("下载"),
+			status: "ok",
 		});
 		expect(
 			deriveBuiltinConnectionStatus({
@@ -117,6 +172,15 @@ describe("Built-in readiness to connection state", () => {
 		).toMatchObject({
 			status: "failed",
 			statusDetail: expect.stringContaining("设备"),
+		});
+	});
+
+	it("keeps a supported channel active while its model is downloadable", () => {
+		expect(deriveBuiltinConnectionStatus("downloadable")).toEqual({
+			status: "ok",
+		});
+		expect(deriveBuiltinConnectionStatus("downloading")).toEqual({
+			status: "ok",
 		});
 	});
 });

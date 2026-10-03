@@ -14,8 +14,12 @@
  * let either one consume the other's allowance.
  */
 
+import type { BuiltinReadiness } from "../builtin-ai/capability";
 import { promptLanguageBlocker } from "../builtin-ai/capability";
-import type { BuiltinLanguageModelClient } from "../builtin-ai/language-model";
+import {
+	type BuiltinLanguageModelClient,
+	BuiltinLanguageModelNotReadyError,
+} from "../builtin-ai/language-model";
 import {
 	decideRetry,
 	isRateLimited,
@@ -68,7 +72,13 @@ export type ImageTranslationOutcome =
 			readonly rawText?: string;
 	  }
 	| { readonly kind: "refused"; readonly kindReason: string }
-	| { readonly kind: "failed"; readonly attribution: FailureAttribution };
+	| {
+			readonly kind: "failed";
+			readonly attribution: FailureAttribution;
+			/** Readiness is kept so the UI can offer explicit model activation. */
+			readonly builtinReadiness?: BuiltinReadiness;
+			readonly targetLanguage?: string;
+	  };
 
 /** What the orchestration needs from the surrounding application. */
 export interface ImageTranslationDeps {
@@ -178,6 +188,18 @@ export function createImageTranslator(
 
 					text = outcome.text;
 				} catch (error) {
+					if (error instanceof BuiltinLanguageModelNotReadyError) {
+						logger.debug("image.run.model-not-ready", {
+							requestId: request.requestId,
+							readiness: error.readiness.state,
+						});
+						return {
+							kind: "failed",
+							attribution: attributeFailure({ error }),
+							builtinReadiness: error.readiness,
+							targetLanguage: error.targetLanguage ?? request.targetLanguage,
+						};
+					}
 					// The transport rejects on HTTP failure rather than returning one, so
 					// a rate limit arrives here and not as a response body.
 					const status = statusOf(error);

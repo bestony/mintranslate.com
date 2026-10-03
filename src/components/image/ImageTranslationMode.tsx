@@ -13,7 +13,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Analytics } from "#/lib/analytics/track";
-import { createBuiltinLanguageModelClient } from "#/lib/builtin-ai/language-model";
+import {
+	BuiltinLanguageModelNotReadyError,
+	createBuiltinLanguageModelClient,
+} from "#/lib/builtin-ai/language-model";
 import { createKeyedLimiters } from "#/lib/call-control/concurrency";
 import type { Connection } from "#/lib/connections/model";
 import type { GlossaryPromptTerm } from "#/lib/connections/styles";
@@ -284,6 +287,24 @@ export function ImageTranslationMode({
 				}
 
 				if (outcome.kind === "failed") {
+					if (outcome.builtinReadiness !== undefined) {
+						const notReady = new BuiltinLanguageModelNotReadyError(
+							outcome.builtinReadiness,
+							{
+								targetLanguage: outcome.targetLanguage ?? targetLang,
+							},
+						);
+						if (
+							builtinDownload.offer(notReady, imageIntentKey, () => {
+								const retryFile = pendingFile.current;
+								if (retryFile !== undefined) void submit(retryFile);
+							})
+						) {
+							setStage("failed");
+							setNotice(undefined);
+							return;
+						}
+					}
 					setStage("failed");
 					setNotice(outcome.attribution.summary);
 					analytics.track("translate_error", {

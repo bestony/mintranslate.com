@@ -19,7 +19,6 @@ import {
 	deriveBuiltinConnectionStatus,
 	detectBuiltinCapabilities,
 	queryLanguageModelAvailability,
-	queryTranslatorAvailability,
 } from "../builtin-ai/capability";
 import { logger } from "../logger";
 import {
@@ -117,12 +116,12 @@ export interface BuiltinConnectionReadiness {
 	readonly multimodal?: BuiltinReadiness;
 }
 
-/** Translator requires both its translator and local detector APIs. */
+/** A built-in translator connection is supported when Translator is in scope. */
 export function builtinConnectionSupport(
 	detection: BuiltinCapabilityDetection,
 ): BuiltinConnectionSupport {
 	return {
-		translator: detection.translator && detection.languageDetector,
+		translator: detection.translator,
 		multimodal: detection.languageModel,
 	};
 }
@@ -228,44 +227,38 @@ export function useConnectionStore(): ConnectionStore {
 		setStore(resolved);
 		const detection = detectBuiltinCapabilities();
 		const support = builtinConnectionSupport(detection);
-		if (!resolved) {
-			setConnections(seedBuiltinConnections([], support));
-			return;
-		}
-
-		const loadedConnections = loadConnections(resolved);
+		const loadedConnections = resolved
+			? loadConnections(resolved)
+			: { value: [] as Connection[] };
 		const seeded = seedBuiltinConnections(loadedConnections.value, support);
 		setConnections(seeded);
-		setLoadWarning(loadedConnections.discarded);
-		setKeys(stripBuiltinKeys(loadKeys(resolved)));
-		const loadedActiveId = loadActiveId(resolved);
-		setActiveId(
-			loadedActiveId !== null && seeded.some(({ id }) => id === loadedActiveId)
-				? loadedActiveId
-				: null,
-		);
+		if (resolved) {
+			setLoadWarning(loadedConnections.discarded);
+			setKeys(stripBuiltinKeys(loadKeys(resolved)));
+			const loadedActiveId = loadActiveId(resolved);
+			setActiveId(
+				loadedActiveId !== null &&
+					seeded.some(({ id }) => id === loadedActiveId)
+					? loadedActiveId
+					: null,
+			);
 
-		const storedTier = resolved.getItem(TIER_KEY);
-		if (storedTier === "advanced" || storedTier === "fast")
-			setTierState(storedTier);
+			const storedTier = resolved.getItem(TIER_KEY);
+			if (storedTier === "advanced" || storedTier === "fast")
+				setTierState(storedTier);
+		}
 
 		let cancelled = false;
 		void Promise.all([
-			support.translator
-				? queryTranslatorAvailability("en", "zh", {
-						scope: globalThis as BuiltinApiScope,
-					})
-				: Promise.resolve(undefined),
 			support.multimodal
-				? queryLanguageModelAvailability("en", {
+				? queryLanguageModelAvailability(undefined, {
 						scope: globalThis as BuiltinApiScope,
 					})
 				: Promise.resolve(undefined),
-		]).then(([translator, multimodal]) => {
+		]).then(([multimodal]) => {
 			if (cancelled) return;
 			setConnections((current) =>
 				seedBuiltinConnections(current, support, Date.now(), {
-					...(translator !== undefined && { translator }),
 					...(multimodal !== undefined && { multimodal }),
 				}),
 			);

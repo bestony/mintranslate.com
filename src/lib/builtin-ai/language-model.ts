@@ -6,11 +6,13 @@
  * is persisted or sent through an external adapter.
  */
 
+import { logger } from "../logger";
 import {
 	type BuiltinApiScope,
 	type BuiltinLanguageModelApi,
 	type BuiltinLanguageModelSession,
 	type BuiltinReadiness,
+	builtinLanguageModelOptions,
 	queryLanguageModelAvailability,
 } from "./capability";
 import { monitorBuiltinDownload } from "./monitor";
@@ -30,6 +32,7 @@ export interface BuiltinModelPromptInput {
 /** Explicit creation options, usually called from a user gesture. */
 export interface BuiltinLanguageModelCreateOptions {
 	readonly targetLanguage?: string;
+	readonly systemInstruction?: string;
 	readonly onProgress?: (progress: number) => void;
 	readonly signal?: AbortSignal;
 }
@@ -39,6 +42,8 @@ export interface BuiltinLanguageModelPromptOptions {
 	readonly signal?: AbortSignal;
 	readonly responseConstraint?: unknown;
 	readonly targetLanguage?: string;
+	readonly systemInstruction?: string;
+	readonly onChunk?: (text: string) => void;
 }
 
 /** Error raised when a session needs explicit activation or is unavailable. */
@@ -110,14 +115,21 @@ export function createBuiltinLanguageModelClient(
 	options: {
 		readonly api?: BuiltinLanguageModelApi;
 		readonly scope?: BuiltinApiScope;
-		readonly expectedInputs?: readonly Record<string, unknown>[];
-		readonly expectedOutputs?: readonly Record<string, unknown>[];
 		readonly onDownloadProgress?: (progress: number) => void;
 	} = {},
 ): BuiltinLanguageModelClient {
 	const scope = options.scope ?? (globalThis as BuiltinApiScope);
 	const api = options.api ?? scope.LanguageModel;
-	let session: BuiltinLanguageModelSession | undefined;
+	const sessions = new Set<BuiltinLanguageModelSession>();
+	let generation = 0;
+
+	function release(current: BuiltinLanguageModelSession): void {
+		if (!sessions.delete(current)) return;
+		current.destroy?.();
+		logger.debug("builtin.language-model.session.destroyed", {
+			activeSessions: sessions.size,
+		});
+	}
 
 	async function availability(
 		targetLanguage?: string,
@@ -126,9 +138,9 @@ export function createBuiltinLanguageModelClient(
 		return queryLanguageModelAvailability(targetLanguage ?? "en", { api });
 	}
 
-	async function create(
+	async function createSession(
 		createOptions: BuiltinLanguageModelCreateOptions = {},
-	): Promise<void> {
+	): Promise<BuiltinLanguageModelSession> {
 		if (api === undefined)
 			throw new BuiltinLanguageModelNotReadyError({
 				state: "unavailable",
@@ -136,19 +148,22 @@ export function createBuiltinLanguageModelClient(
 			});
 
 		createOptions.signal?.throwIfAborted();
+		const startedGeneration = generation;
+		const systemInstruction = [
+			...(createOptions.targetLanguage !== undefined
+				? [`Translate into ${createOptions.targetLanguage}.`]
+				: []),
+			...(createOptions.systemInstruction
+				? [createOptions.systemInstruction]
+				: []),
+		].join("\n\n");
 		const created = await api.create({
-			expectedInputs: options.expectedInputs ?? [
-				{ type: "text", languages: ["en", "ja", "es", "de", "fr"] },
-				{ type: "image" },
-			],
-			expectedOutputs: options.expectedOutputs ?? [
-				{ type: "text", languages: ["en", "ja", "es", "de", "fr"] },
-			],
-			...(createOptions.targetLanguage !== undefined && {
+			...builtinLanguageModelOptions(createOptions.targetLanguage),
+			...(systemInstruction !== "" && {
 				initialPrompts: [
 					{
 						role: "system",
-						content: `Translate into ${createOptions.targetLanguage}.`,
+						content: systemInstruction,
 					},
 				],
 			}),
@@ -166,15 +181,25 @@ export function createBuiltinLanguageModelClient(
 			created.destroy?.();
 			createOptions.signal.throwIfAborted();
 		}
-		session?.destroy?.();
-		session = created;
+		if (startedGeneration !== generation) {
+			created.destroy?.();
+			throw new DOMException(
+				"The local model client was destroyed.",
+				"AbortError",
+			);
+		}
+		sessions.add(created);
+		logger.debug("builtin.language-model.session.created", {
+			targetLanguage: createOptions.targetLanguage,
+			activeSessions: sessions.size,
+		});
+		return created;
 	}
 
-	async function ensureSession(
+	async function requestSession(
 		promptOptions: BuiltinLanguageModelPromptOptions,
 	): Promise<BuiltinLanguageModelSession> {
 		promptOptions.signal?.throwIfAborted();
-		if (session !== undefined) return session;
 		const targetLanguage = promptOptions.targetLanguage ?? "en";
 		const readiness = await availability(targetLanguage);
 		promptOptions.signal?.throwIfAborted();
@@ -182,39 +207,67 @@ export function createBuiltinLanguageModelClient(
 			throw new BuiltinLanguageModelNotReadyError(readiness, {
 				targetLanguage,
 			});
-		await create({ targetLanguage, signal: promptOptions.signal });
-		if (session === undefined)
-			throw new BuiltinLanguageModelNotReadyError({
-				state: "unavailable",
-				reason: "unknown",
-			});
-		return session;
+		return createSession({
+			targetLanguage,
+			systemInstruction: promptOptions.systemInstruction,
+			signal: promptOptions.signal,
+		});
+	}
+
+	async function withSession(
+		promptOptions: BuiltinLanguageModelPromptOptions,
+		run: (current: BuiltinLanguageModelSession) => Promise<string>,
+	): Promise<string> {
+		const current = await requestSession(promptOptions);
+		const onAbort = () => release(current);
+		promptOptions.signal?.addEventListener("abort", onAbort, { once: true });
+		try {
+			promptOptions.signal?.throwIfAborted();
+			const text = await run(current);
+			promptOptions.signal?.throwIfAborted();
+			if (!sessions.has(current))
+				throw new DOMException(
+					"The local model session was destroyed.",
+					"AbortError",
+				);
+			return text;
+		} finally {
+			promptOptions.signal?.removeEventListener("abort", onAbort);
+			release(current);
+		}
 	}
 
 	return {
 		availability,
-		create,
+		async create(createOptions = {}) {
+			const current = await createSession(createOptions);
+			release(current);
+		},
 		async prompt(input, promptOptions = {}) {
-			const current = await ensureSession(promptOptions);
-			return current.prompt(promptInput(input), {
-				signal: promptOptions.signal,
-				responseConstraint: promptOptions.responseConstraint,
-			});
+			return withSession(promptOptions, (current) =>
+				current.prompt(promptInput(input), {
+					signal: promptOptions.signal,
+					responseConstraint: promptOptions.responseConstraint,
+				}),
+			);
 		},
 		async promptStreaming(input, promptOptions = {}) {
-			const current = await ensureSession(promptOptions);
-			let text = "";
-			for await (const chunk of current.promptStreaming(promptInput(input), {
-				signal: promptOptions.signal,
-				responseConstraint: promptOptions.responseConstraint,
-			})) {
-				text += chunk;
-			}
-			return text;
+			return withSession(promptOptions, async (current) => {
+				let text = "";
+				for await (const chunk of current.promptStreaming(promptInput(input), {
+					signal: promptOptions.signal,
+					responseConstraint: promptOptions.responseConstraint,
+				})) {
+					promptOptions.signal?.throwIfAborted();
+					text += chunk;
+					promptOptions.onChunk?.(chunk);
+				}
+				return text;
+			});
 		},
 		destroy() {
-			session?.destroy?.();
-			session = undefined;
+			generation += 1;
+			for (const current of sessions) release(current);
 		},
 	};
 }
