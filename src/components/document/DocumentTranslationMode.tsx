@@ -41,6 +41,7 @@ import {
 } from "#/lib/translation-memory";
 import { DocumentDropZone } from "./DocumentDropZone";
 import { DocumentResultView } from "./DocumentResultView";
+import { canStartDocumentRun, shouldDisableResume } from "./task-actions";
 
 interface DocumentTranslationModeProps {
 	readonly connection: Connection | undefined;
@@ -197,6 +198,7 @@ export function DocumentTranslationMode({
 			parsedPdf: PdfExtraction | undefined,
 			currentStore: DocumentTaskStore,
 		) => {
+			if (!canStartDocumentRun(abortRef.current)) return;
 			if (connection === undefined) {
 				setNotice("还没有可用的连接。请先在设置页配置一个支持文本输入的模型。");
 				return;
@@ -266,6 +268,8 @@ export function DocumentTranslationMode({
 				});
 				const attribution = attributeFailure({ error });
 				setNotice(attribution.summary);
+			} finally {
+				if (abortRef.current === controller) abortRef.current = undefined;
 			}
 		},
 		[analytics, apiKey, connection, customInstruction, deliver, refreshTasks],
@@ -491,6 +495,7 @@ export function DocumentTranslationMode({
 										<button
 											type="button"
 											className="nav-link min-h-11"
+											disabled={shouldDisableResume(activeTask)}
 											onClick={() => void resume(entry)}
 										>
 											继续
