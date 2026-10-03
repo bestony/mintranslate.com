@@ -19,10 +19,13 @@
 
 import { throttle } from "../call-control/throttle";
 import { logger } from "../logger";
-import type { RegistrationLike } from "./registration";
+import type { RegistrationLike, WaitingWorkerLike } from "./registration";
 
 /** Update probe throttle window. */
 export const UPDATE_CHECK_THROTTLE_MS = 10_000;
+
+/** Maximum time to wait for a worker to finish activation after confirmation. */
+export const UPDATE_ACTIVATION_TIMEOUT_MS = 15_000;
 
 /** Message a waiting worker understands. */
 export const SKIP_WAITING_MESSAGE = { type: "SKIP_WAITING" } as const;
@@ -35,6 +38,10 @@ export interface UpdateEnvironment {
 	probe(): Promise<void>;
 	/** Reload the page to pick up the new worker. */
 	reload(): void;
+	/** Observe a controller change caused by another tab or this update. */
+	onControllerChange?(listener: () => void): () => void;
+	/** Wait until a worker has activated, when the environment provides a custom wait. */
+	waitForActivation?(worker: WaitingWorkerLike): Promise<boolean>;
 }
 
 /** What the interface needs to render the update prompt. */
@@ -54,8 +61,8 @@ export interface UpdateFlow {
 	check(): void;
 	/** Check for updates now, bypassing the throttle (used by the manual entry). */
 	checkNow(): Promise<void>;
-	/** Apply the waiting update: activate it and reload. */
-	apply(): void;
+	/** Apply the waiting update: activate it, then reload after activation. */
+	apply(): Promise<void>;
 	/** Note that a newer worker is waiting (called by the registration owner). */
 	markWaiting(): void;
 	/** Note a controller change, which means another tab activated an update. */
@@ -63,9 +70,55 @@ export interface UpdateFlow {
 	dispose(): void;
 }
 
+/**
+ * Wait for a waiting worker to finish activation.
+ *
+ * Reloading immediately after `postMessage` races the browser's worker
+ * lifecycle: the navigation can still be served by the old active worker. The
+ * state transition is the reliable boundary before reloading.
+ */
+export function waitForWorkerActivation(
+	worker: WaitingWorkerLike,
+): Promise<boolean> {
+	if (worker.state === "activated") return Promise.resolve(true);
+
+	const addEventListener = worker.addEventListener;
+	if (typeof addEventListener !== "function") {
+		return Promise.resolve(false);
+	}
+
+	return new Promise((resolve) => {
+		let settled = false;
+		let timeout: ReturnType<typeof setTimeout> | undefined;
+
+		const finish = (activated: boolean) => {
+			if (settled) return;
+			settled = true;
+			if (timeout !== undefined) clearTimeout(timeout);
+			worker.removeEventListener?.("statechange", onStateChange);
+			resolve(activated);
+		};
+
+		const onStateChange = () => {
+			if (worker.state === "activated") {
+				finish(true);
+			} else if (worker.state === "redundant") {
+				finish(false);
+			}
+		};
+
+		timeout = setTimeout(() => finish(false), UPDATE_ACTIVATION_TIMEOUT_MS);
+		addEventListener("statechange", onStateChange);
+		// The worker may have reached a terminal state between the initial check
+		// and listener registration.
+		onStateChange();
+	});
+}
+
 export function createUpdateFlow(environment: UpdateEnvironment): UpdateFlow {
 	const listeners = new Set<(state: UpdateState) => void>();
 	let state: UpdateState = { updateReady: false };
+	let applying = false;
 
 	function emit(next: UpdateState): void {
 		state = next;
@@ -100,6 +153,16 @@ export function createUpdateFlow(environment: UpdateEnvironment): UpdateFlow {
 		}
 	}
 
+	function markControllerChanged(): void {
+		// Another tab activated a newer worker: this tab is now behind it.
+		emit({ updateReady: true });
+		logger.info("pwa.update.controller-changed");
+	}
+
+	const stopControllerChange = environment.onControllerChange?.(
+		markControllerChanged,
+	);
+
 	return {
 		subscribe(listener) {
 			listeners.add(listener);
@@ -121,7 +184,14 @@ export function createUpdateFlow(environment: UpdateEnvironment): UpdateFlow {
 			}
 		},
 
-		apply() {
+		async apply() {
+			if (applying) {
+				logger.debug("pwa.update.apply.skipped", {
+					reason: "already-applying",
+				});
+				return;
+			}
+
 			const waiting = environment.registration()?.waiting;
 			if (waiting === null || waiting === undefined) {
 				// Nothing waiting: fall back to a plain reload so the action still
@@ -131,11 +201,35 @@ export function createUpdateFlow(environment: UpdateEnvironment): UpdateFlow {
 				return;
 			}
 
-			logger.info("pwa.update.applying");
-			// Only the page can ask the waiting worker to take over, which is what
-			// keeps activation user-driven rather than automatic.
-			environment.registration()?.postMessage?.(SKIP_WAITING_MESSAGE);
-			environment.reload();
+			if (typeof waiting.postMessage !== "function") {
+				logger.warn("pwa.update.apply.failed", {
+					reason: "waiting-worker-cannot-receive-message",
+				});
+				return;
+			}
+
+			applying = true;
+			try {
+				logger.info("pwa.update.applying");
+				// `postMessage` belongs to the waiting ServiceWorker, not to the
+				// ServiceWorkerRegistration. Sending it to the registration is a
+				// silent no-op in real browsers.
+				waiting.postMessage(SKIP_WAITING_MESSAGE);
+
+				const activated = await (environment.waitForActivation?.(waiting) ??
+					waitForWorkerActivation(waiting));
+				if (!activated) {
+					logger.warn("pwa.update.activation.failed");
+					return;
+				}
+
+				logger.info("pwa.update.reloading");
+				environment.reload();
+			} catch (error) {
+				logger.warn("pwa.update.apply.failed", { error });
+			} finally {
+				applying = false;
+			}
 		},
 
 		markWaiting() {
@@ -143,14 +237,11 @@ export function createUpdateFlow(environment: UpdateEnvironment): UpdateFlow {
 			logger.info("pwa.update.ready");
 		},
 
-		markControllerChanged() {
-			// Another tab activated a newer worker: this tab is now behind it.
-			emit({ updateReady: true });
-			logger.info("pwa.update.controller-changed");
-		},
+		markControllerChanged,
 
 		dispose() {
 			throttledCheck.cancel();
+			stopControllerChange?.();
 			listeners.clear();
 		},
 	};
@@ -160,6 +251,10 @@ export function createUpdateFlow(environment: UpdateEnvironment): UpdateFlow {
 export function createBrowserUpdateEnvironment(
 	registration: () => RegistrationLike | undefined,
 ): UpdateEnvironment {
+	const serviceWorker = () =>
+		(globalThis as unknown as { navigator?: Navigator }).navigator
+			?.serviceWorker;
+
 	return {
 		registration,
 		probe: async () => {
@@ -168,5 +263,13 @@ export function createBrowserUpdateEnvironment(
 		reload: () => {
 			globalThis.location?.reload();
 		},
+		onControllerChange: (listener) => {
+			const container = serviceWorker();
+			if (container === undefined) return () => {};
+
+			container.addEventListener("controllerchange", listener);
+			return () => container.removeEventListener("controllerchange", listener);
+		},
+		waitForActivation: waitForWorkerActivation,
 	};
 }

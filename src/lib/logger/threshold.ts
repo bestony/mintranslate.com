@@ -12,6 +12,7 @@
  * exactly the situation it is wanted (an offline or locked-down install).
  */
 
+import { isDiagnosticLoggingActive } from "./diagnostic/session";
 import { DEFAULT_LOG_LEVEL, isLogLevel, type LogLevel } from "./levels";
 
 /** Storage slot for the runtime threshold override. */
@@ -54,6 +55,13 @@ export function resolveLogLevel(
 	storage: LevelStorage | undefined = currentStorage(),
 	buildLevel: LogLevel | undefined = buildTimeLevel(),
 ): LogLevel {
+	try {
+		if (isDiagnosticLoggingActive(storage)) {
+			return "debug";
+		}
+	} catch {
+		// A diagnostic check failure must never break the logger
+	}
 	return runtimeLevel(storage) ?? buildLevel ?? DEFAULT_LOG_LEVEL;
 }
 

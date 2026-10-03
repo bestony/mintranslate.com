@@ -92,7 +92,11 @@ import {
 	SpeechRateControl,
 	useSpeech,
 } from "../output/SpeechControls";
-import { LanguagePicker, languageChipLabel } from "./LanguagePicker";
+import {
+	LanguagePicker,
+	languageChipLabel,
+	selectedSourceLanguage,
+} from "./LanguagePicker";
 
 /**
  * How the modifier key is shown for the current platform.
@@ -120,8 +124,9 @@ function useModifierLabel(): string {
 /** One connection's limiter set, shared across the component's lifetime. */
 const limiters = createKeyedLimiters(2);
 
-/** Chip sizes. */
-const CHIP = "min-h-11 shrink-0 rounded-sm px-4 text-xs";
+/** Chip sizes and alignment. */
+const CHIP =
+	"inline-flex items-center justify-center min-h-11 shrink-0 rounded-sm px-4 text-xs";
 
 /**
  * Quick entries shown below the breakpoint.
@@ -170,15 +175,41 @@ function MobileSwapButton({
 /**
  * Language chip classes.
  *
+ * Every chip is an inline-flex container centered on both axes so text sits
+ * vertically centered regardless of platform or screen size. Entries hidden
+ * below md omit the base `inline-flex` to avoid overriding `hidden` on mobile.
+ *
  * The selected chip fills with the action colour and uses white text — the same
  * pair as a primary button, so "this is the active choice" reads the same way
  * everywhere. A tinted background was not enough: `bg-primary/10` on a white
  * surface is visually near-identical to an unselected chip's plain white.
  */
-function chipClass(selected: boolean): string {
+function chipClass(selected: boolean, mobileHidden = false): string {
+	const base = mobileHidden
+		? "hidden md:inline-flex items-center justify-center min-h-11 shrink-0 rounded-sm px-4 text-xs"
+		: CHIP;
 	return selected
-		? `${CHIP} border border-transparent bg-primary-strong text-primary-foreground`
-		: `${CHIP} border border-border`;
+		? `${base} border border-transparent bg-primary-strong text-primary-foreground`
+		: `${base} border border-border`;
+}
+
+/**
+ * Prominent link to settings when no model connection is configured.
+ *
+ * Rendered in both text and image mode toolbars. Styled as a warning button
+ * within the design palette, using a glyph and label so state is not conveyed
+ * by colour alone.
+ */
+function UnconfiguredConnectionLink() {
+	return (
+		<Link
+			to="/settings"
+			className="inline-flex min-h-11 items-center gap-2 rounded-sm bg-primary-strong px-4 text-primary-foreground text-xs"
+		>
+			<span aria-hidden="true">⚠</span>
+			<span>未配置模型连接 · 去设置</span>
+		</Link>
+	);
 }
 
 export function TranslationWorkspace() {
@@ -263,12 +294,17 @@ export function TranslationWorkspace() {
 	/**
 	 * Analytics entry point.
 	 *
-	 * Created once; the connection state is read through a closure so the tracker
-	 * does not need rebuilding when a connection is added.
+	 * Created once; the connection state is read through a ref so the tracker
+	 * does not need rebuilding when a connection is added. Its identity must stay
+	 * stable: callbacks and effects below depend on it.
 	 */
+	const byokConfigured = useRef(false);
+	useEffect(() => {
+		byokConfigured.current = store.activeId !== null;
+	}, [store.activeId]);
 	const analytics = useMemo(
-		() => createAnalytics({ byokConfigured: () => store.activeId !== null }),
-		[store],
+		() => createAnalytics({ byokConfigured: () => byokConfigured.current }),
+		[],
 	);
 
 	/**
@@ -336,8 +372,16 @@ export function TranslationWorkspace() {
 
 	// Restore state from the URL once, on mount. `fromQueryString` never returns
 	// an unbounded text value, so a shared link cannot overflow the input.
+	//
+	// The guard is load-bearing. The effect below mirrors state into the URL, so
+	// running this one again reads back the URL of the previous render: with the
+	// text changed in between, the two effects then swap the old and new text
+	// forever (an infinite render loop from the second typed character on).
+	const restoredFromUrl = useRef(false);
 	useEffect(() => {
 		if (typeof window === "undefined") return;
+		if (restoredFromUrl.current) return;
+		restoredFromUrl.current = true;
 		const restored = fromQueryString(window.location.search);
 		if (restored.sourceLang !== undefined) {
 			reportLanguageChange({
@@ -429,6 +473,36 @@ export function TranslationWorkspace() {
 		[getHistoryDb],
 	);
 
+	/**
+	 * Values the controller callbacks read at call time.
+	 *
+	 * The controller must live for the whole component lifetime: it owns the
+	 * debounce timer, the IME composition flag, the "unchanged input" guard and
+	 * the latest-wins slot. Rebuilding it whenever one of these values changed
+	 * (the connection store is a new object on every render) dropped all four:
+	 * each re-render after a success scheduled another request for the same
+	 * text, and the requests multiplied without bound. The callbacks therefore
+	 * read the current values through this ref instead of closing over them.
+	 */
+	const liveValues = {
+		active,
+		store,
+		promptStyle,
+		customInstruction,
+		sourceLang,
+		targetLang,
+		analytics,
+		reportSubmit,
+		persistHistory,
+	};
+	const live = useRef(liveValues);
+	// Declared before the effect that feeds the controller, so a request started
+	// from that effect already sees the values of the same render.
+	useEffect(() => {
+		live.current = liveValues;
+	});
+
+	// Created once. Everything that changes over time is read from `live`.
 	const controller = useMemo(
 		() =>
 			createTranslationController({
@@ -436,6 +510,11 @@ export function TranslationWorkspace() {
 				glossaryMatcher: matchTerms,
 				callbacks: {
 					onStart: (_requestId, input) => {
+						const { reportSubmit } = live.current;
+						// Detection belongs to the current input. Clear the previous result
+						// before a new request so the chip cannot show stale language data.
+						detectedRef.current = undefined;
+						setDetected(undefined);
 						lastInput.current = {
 							text: input.text,
 							sourceLang: input.sourceLang,
@@ -460,6 +539,26 @@ export function TranslationWorkspace() {
 					},
 					onChunk: (_id, delta) => setOutput((current) => current + delta),
 					onSuccess: (_id, result, _ttftMs, metadata) => {
+						const {
+							active,
+							store,
+							sourceLang,
+							targetLang,
+							analytics,
+							persistHistory,
+						} = live.current;
+						const detectedInput = lastInput.current;
+						if (
+							detectedInput?.sourceLang === AUTO_DETECT &&
+							detectedRef.current === undefined
+						) {
+							// The current model contract returns translated text only. Keep the
+							// existing fallback until a structured detection field is available.
+							const detectedLanguage =
+								detectedInput.targetLang === "en" ? "zh-Hans" : "en";
+							detectedRef.current = detectedLanguage;
+							setDetected(detectedLanguage);
+						}
 						const resolvedMetadata: TranslationResultMetadata = metadata ?? {
 							memoryHit: false,
 							memoryReferences: [],
@@ -514,6 +613,7 @@ export function TranslationWorkspace() {
 						});
 					},
 					onFailure: (_id, error) => {
+						const { active, analytics } = live.current;
 						// The input is deliberately left untouched, and any previous
 						// successful output stays until a new success replaces it.
 						setPending(false);
@@ -574,6 +674,8 @@ export function TranslationWorkspace() {
 					memoryReferences = [],
 					glossaryMatches = [],
 				}) => {
+					const { active, store, promptStyle, customInstruction } =
+						live.current;
 					if (!active) throw new Error("no active connection");
 					runStartedAt.current = Date.now();
 					// Capture the input this request was built from, so the success
@@ -627,11 +729,6 @@ export function TranslationWorkspace() {
 						throw new Error(outcome.refusal.reason);
 					}
 
-					// Detect-language回显: the model's answer is the only signal we have.
-					if (input.sourceLang === AUTO_DETECT && detected === undefined) {
-						setDetected(input.targetLang === "en" ? "zh-Hans" : "en");
-					}
-
 					logger.debug("translation.run.done", {
 						requestId,
 						signal: signal.aborted,
@@ -639,20 +736,11 @@ export function TranslationWorkspace() {
 					return { text: outcome.text, glossaryMatches };
 				},
 			}),
-		[
-			active,
-			caller,
-			store,
-			detected,
-			promptStyle,
-			customInstruction,
-			targetLang,
-			persistHistory,
-			sourceLang,
-			analytics.track,
-			reportSubmit,
-		],
+		[caller],
 	);
+
+	// Abandon pending and in-flight work when the workspace unmounts.
+	useEffect(() => () => controller.cancel(), [controller]);
 
 	// Feed the controller every time the input state changes.
 	useEffect(() => {
@@ -680,9 +768,24 @@ export function TranslationWorkspace() {
 		});
 		setSourceLang(next.source);
 		setTargetLang(next.target);
-		// Re-translate immediately in the new direction.
+		// Re-translate immediately in the new direction. The controller must see
+		// the swapped pair now: the state above reaches it only after the render.
+		controller.update({
+			text,
+			sourceLang: next.source,
+			targetLang: next.target,
+			connectionId: activeId,
+			composing: false,
+		});
 		controller.trigger();
-	}, [controller, sourceLang, targetLang, reportLanguageChange]);
+	}, [
+		controller,
+		text,
+		activeId,
+		sourceLang,
+		targetLang,
+		reportLanguageChange,
+	]);
 
 	const pickLanguage = useCallback(
 		(code: string) => {
@@ -694,6 +797,7 @@ export function TranslationWorkspace() {
 					trigger: "search_list",
 				});
 				if (code === AUTO_DETECT) {
+					detectedRef.current = undefined;
 					setSourceLang(AUTO_DETECT);
 					setDetected(undefined);
 				} else {
@@ -703,6 +807,8 @@ export function TranslationWorkspace() {
 						[targetLang],
 					);
 					setSourceLang(code);
+					detectedRef.current = undefined;
+					setDetected(undefined);
 					setTargetLang(resolved.pair.target);
 					if (resolved.notice) setNotice(resolved.notice);
 				}
@@ -804,8 +910,14 @@ export function TranslationWorkspace() {
 		sourceLang,
 	]);
 
-	/** Whether the source side is on auto-detect, which is also a selected state. */
-	const sourceIsAuto = sourceLang === AUTO_DETECT;
+	// Keep auto-detect as the request mode, while moving the visual selection to
+	// the detected quick chip when that language is visible in the row.
+	const selectedSourceLang = selectedSourceLanguage(
+		sourceLang,
+		detected,
+		sourceChips,
+	);
+	const sourceIsAuto = selectedSourceLang === AUTO_DETECT;
 
 	// Non-text modes are rendered as their own subtree with the same chrome, so the
 	// text-mode markup below stays byte-identical and the modes never share state.
@@ -844,12 +956,7 @@ export function TranslationWorkspace() {
 								使用中：{active.name}
 							</span>
 						) : (
-							<Link
-								to="/settings"
-								className="nav-link min-h-11 inline-flex items-center text-xs underline"
-							>
-								未配置连接 — 去设置
-							</Link>
+							<UnconfiguredConnectionLink />
 						)}
 					</div>
 
@@ -893,10 +1000,9 @@ export function TranslationWorkspace() {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			{/* Layout: single column on mobile, a three-column grid (source / swap axis /
-			    target) from md up. The rows are left to stretch on purpose: the panels
-			    size themselves from the viewport, and stretching is what lets them use
-			    the free height instead of leaving it blank at the bottom. */}
-			<div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:grid md:min-h-0 md:grid-cols-[1fr_auto_1fr] md:items-stretch md:gap-x-6 md:gap-y-4 md:p-6">
+			    target) from md up. The toolbar row sizes to content (auto), and the
+			    panels take the remaining height (1fr) so they fill the viewport. */}
+			<div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:grid md:min-h-0 md:grid-cols-[1fr_auto_1fr] md:grid-rows-[auto_1fr] md:items-stretch md:gap-x-6 md:gap-y-4 md:p-6">
 				<div className="md:col-span-3">
 					{/* The toolbar carries only what the workspace needs at a glance.
 				    Shortcut hints moved to the footer and a tooltip, and the install
@@ -936,13 +1042,7 @@ export function TranslationWorkspace() {
 								使用中：{active.name}
 							</span>
 						) : (
-							<Link
-								to="/settings"
-								// grid-exception: 4px icon-to-text gap
-								className="nav-link min-h-11 inline-flex items-center gap-1 text-xs underline"
-							>
-								未配置连接 — 去设置
-							</Link>
+							<UnconfiguredConnectionLink />
 						)}
 					</div>
 				</div>
@@ -959,10 +1059,7 @@ export function TranslationWorkspace() {
 							className={chipClass(sourceIsAuto)}
 							onClick={() => setPicker("source")}
 						>
-							{languageChipLabel(
-								sourceLang,
-								detected !== undefined && sourceLang === AUTO_DETECT,
-							)}
+							{languageChipLabel(sourceLang, detected)}
 						</button>
 						{/* Mobile shows one fewer quick entry so the row stays on a single
 						    line down to 390px; both entries remain reachable via 更多. */}
@@ -970,13 +1067,15 @@ export function TranslationWorkspace() {
 							<button
 								key={code}
 								type="button"
-								aria-pressed={sourceLang === code}
-								aria-current={sourceLang === code ? "true" : undefined}
-								className={`${chipClass(sourceLang === code)} ${
-									index >= MOBILE_CHIP_COUNT ? "hidden md:inline-flex" : ""
-								}`}
+								aria-pressed={selectedSourceLang === code}
+								aria-current={selectedSourceLang === code ? "true" : undefined}
+								className={chipClass(
+									selectedSourceLang === code,
+									index >= MOBILE_CHIP_COUNT,
+								)}
 								onClick={() => {
 									setSourceLang(code);
+									detectedRef.current = undefined;
 									setDetected(undefined);
 								}}
 							>
@@ -1059,6 +1158,7 @@ export function TranslationWorkspace() {
 										setOutput("");
 										setFailure(undefined);
 										setNotice(undefined);
+										detectedRef.current = undefined;
 										setDetected(undefined);
 										textareaRef.current?.focus();
 									}}
@@ -1099,7 +1199,7 @@ export function TranslationWorkspace() {
 							className={chipClass(true)}
 							onClick={() => setPicker("target")}
 						>
-							{languageChipLabel(targetLang, false)}
+							{languageChipLabel(targetLang)}
 						</button>
 						{targetChips.map((code, index) => (
 							<button
@@ -1107,9 +1207,10 @@ export function TranslationWorkspace() {
 								type="button"
 								aria-pressed={targetLang === code}
 								aria-current={targetLang === code ? "true" : undefined}
-								className={`${chipClass(targetLang === code)} ${
-									index >= MOBILE_CHIP_COUNT ? "hidden md:inline-flex" : ""
-								}`}
+								className={chipClass(
+									targetLang === code,
+									index >= MOBILE_CHIP_COUNT,
+								)}
 								onClick={() => {
 									const resolved = resolveTargetConflict(
 										{ source: sourceLang, target: code },

@@ -22,6 +22,7 @@
  * reject IndexedDB, and translation must keep working regardless.
  */
 
+import { logger } from "../logger";
 import {
 	dedupeKey,
 	type HistoryRecord,
@@ -270,8 +271,16 @@ export async function writeRecord(
 		transaction.objectStore(RECORDS_STORE).put(withKey(record));
 		await transactionAsPromise(transaction);
 
+		logger.debug("history.db.write", {
+			id: record.id,
+			inserted: existing === undefined,
+			sourceLang: record.sourceLang,
+			targetLang: record.targetLang,
+		});
+
 		return { ok: true, record, inserted: existing === undefined };
 	} catch (error) {
+		logger.warn("history.db.write_failed", { error: String(error) });
 		return { ok: false, reason: `写入历史失败：${String(error)}` };
 	}
 }
@@ -326,6 +335,8 @@ export async function evictOverLimit(
 	for (const record of excess) store.delete(record.id);
 	await transactionAsPromise(transaction);
 
+	logger.info("history.db.evicted", { count: excess.length });
+
 	return excess.length;
 }
 
@@ -360,6 +371,7 @@ export async function deleteRecord(
 		const transaction = database.transaction(RECORDS_STORE, "readwrite");
 		transaction.objectStore(RECORDS_STORE).delete(id);
 		await transactionAsPromise(transaction);
+		logger.debug("history.db.delete", { id });
 		return true;
 	} catch {
 		return false;
@@ -377,6 +389,7 @@ export async function deleteRecords(
 	const store = transaction.objectStore(RECORDS_STORE);
 	for (const id of ids) store.delete(id);
 	await transactionAsPromise(transaction);
+	logger.debug("history.db.delete_many", { count: ids.length });
 
 	return ids.length;
 }
@@ -387,6 +400,7 @@ export async function clearAll(database: IDBDatabase): Promise<boolean> {
 		const transaction = database.transaction(RECORDS_STORE, "readwrite");
 		transaction.objectStore(RECORDS_STORE).clear();
 		await transactionAsPromise(transaction);
+		logger.info("history.db.clear");
 		return true;
 	} catch {
 		return false;

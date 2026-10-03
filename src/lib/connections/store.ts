@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { logger } from "../logger";
 import {
 	activationBlocker,
 	applyEdit,
@@ -174,6 +175,12 @@ export function useConnectionStore(): ConnectionStore {
 			},
 		]);
 
+		logger.info("connection.created", {
+			id,
+			provider,
+			model: preset?.models[0] ?? "",
+		});
+
 		return id;
 	}, []);
 
@@ -185,6 +192,10 @@ export function useConnectionStore(): ConnectionStore {
 					: connection,
 			),
 		);
+		logger.info("connection.updated", {
+			id,
+			changedFields: Object.keys(edit),
+		});
 	}, []);
 
 	const setKey = useCallback((id: string, key: string) => {
@@ -209,6 +220,10 @@ export function useConnectionStore(): ConnectionStore {
 					: connection,
 			),
 		);
+		logger.info("connection.key_updated", {
+			id,
+			configured: key.trim() !== "",
+		});
 	}, []);
 
 	const clearAllKeys = useCallback(() => {
@@ -222,6 +237,7 @@ export function useConnectionStore(): ConnectionStore {
 				updatedAt: Date.now(),
 			})),
 		);
+		logger.warn("connection.keys_cleared");
 	}, []);
 
 	const setStatus = useCallback<ConnectionStore["setStatus"]>(
@@ -238,6 +254,7 @@ export function useConnectionStore(): ConnectionStore {
 						: connection,
 				),
 			);
+			logger.info("connection.status_changed", { id, status, detail });
 		},
 		[],
 	);
@@ -245,17 +262,29 @@ export function useConnectionStore(): ConnectionStore {
 	const activate = useCallback<ConnectionStore["activate"]>(
 		(id) => {
 			const connection = connections.find((entry) => entry.id === id);
-			if (!connection) return { ok: false, reason: "连接不存在" };
+			if (!connection) {
+				logger.warn("connection.activation_failed", {
+					id,
+					reason: "连接不存在",
+				});
+				return { ok: false, reason: "连接不存在" };
+			}
 
 			if (!canActivate(connection, hasKey(id))) {
-				// Reuse the blocker description so the message matches the rule.
+				const reason = activationBlocker(connection, hasKey(id)) ?? "无法启用";
+				logger.warn("connection.activation_failed", { id, reason });
 				return {
 					ok: false,
-					reason: activationBlocker(connection, hasKey(id)) ?? "无法启用",
+					reason,
 				};
 			}
 
 			setActiveId(id);
+			logger.info("connection.activated", {
+				id,
+				name: connection.name,
+				model: connection.model,
+			});
 			return { ok: true };
 		},
 		[connections, hasKey],
@@ -273,6 +302,7 @@ export function useConnectionStore(): ConnectionStore {
 		// Deleting the active connection clears the selection rather than
 		// silently promoting another one.
 		setActiveId((current) => (current === id ? null : current));
+		logger.info("connection.removed", { id });
 	}, []);
 
 	const availableIds = useMemo(
@@ -294,30 +324,61 @@ export function useConnectionStore(): ConnectionStore {
 		[connections],
 	);
 
-	return {
-		connections,
-		activeId: effectiveActiveId,
-		tier,
-		loadWarning,
-		activeConnection,
-		usableConnections,
-		keyFor,
-		hasKey,
-		createFromPreset,
-		update,
-		setKey,
-		clearAllKeys,
-		setStatus,
-		activate,
-		remove,
-		setTier: setTierState,
-		languageUsage,
-		noteLanguageUse: (code: string) => {
-			if (code === "") return;
-			setLanguageUsage((current) => ({
-				...current,
-				[code]: (current[code] ?? 0) + 1,
-			}));
-		},
-	};
+	const setTier = useCallback((nextTier: ModelTier) => {
+		setTierState(nextTier);
+		logger.info("connection.tier_changed", { tier: nextTier });
+	}, []);
+
+	const noteLanguageUse = useCallback((code: string) => {
+		if (code === "") return;
+		setLanguageUsage((current) => ({
+			...current,
+			[code]: (current[code] ?? 0) + 1,
+		}));
+	}, []);
+
+	// Consumers put the store in hook dependency lists, so its identity must
+	// change only when its contents do, not on every render.
+	return useMemo(
+		() => ({
+			connections,
+			activeId: effectiveActiveId,
+			tier,
+			loadWarning,
+			activeConnection,
+			usableConnections,
+			keyFor,
+			hasKey,
+			createFromPreset,
+			update,
+			setKey,
+			clearAllKeys,
+			setStatus,
+			activate,
+			remove,
+			setTier,
+			languageUsage,
+			noteLanguageUse,
+		}),
+		[
+			connections,
+			effectiveActiveId,
+			tier,
+			loadWarning,
+			activeConnection,
+			usableConnections,
+			keyFor,
+			hasKey,
+			createFromPreset,
+			update,
+			setKey,
+			clearAllKeys,
+			setStatus,
+			activate,
+			remove,
+			setTier,
+			languageUsage,
+			noteLanguageUse,
+		],
+	);
 }

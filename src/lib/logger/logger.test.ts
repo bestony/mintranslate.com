@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-
+import { DIAGNOSTIC_SESSION_STORAGE_KEY } from "./diagnostic/session";
 import {
 	createLogger,
 	type LogRecord,
@@ -114,6 +114,18 @@ describe("threshold resolution", () => {
 		};
 		expect(runtimeLevel(throwing)).toBeUndefined();
 		expect(resolveLogLevel(throwing, "info")).toBe("info");
+	});
+
+	it("captures debug logs during an active diagnostic session", () => {
+		const now = Date.now();
+		const storage = {
+			getItem: (key: string) =>
+				key === DIAGNOSTIC_SESSION_STORAGE_KEY
+					? JSON.stringify({ startedAt: now, expiresAt: now + 300_000 })
+					: null,
+		};
+
+		expect(resolveLogLevel(storage, "error")).toBe("debug");
 	});
 });
 

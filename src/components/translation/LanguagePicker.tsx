@@ -221,8 +221,33 @@ export function LanguagePicker({
 }
 
 /** Label for a language chip, marking detected languages. */
-export function languageChipLabel(code: string, detected: boolean): string {
-	if (code === AUTO_DETECT) return "检测语言";
+export function languageChipLabel(
+	code: string,
+	detected: boolean | string = false,
+): string {
+	if (code === AUTO_DETECT) {
+		if (typeof detected === "string") {
+			const detectedName = languageByCode(detected)?.nameZh ?? detected;
+			return `${detectedName} - 检测到的语言`;
+		}
+		return "检测语言";
+	}
 	const name = languageByCode(code)?.nameZh ?? code;
-	return detected ? `${name} - 检测到的语言` : name;
+	return detected === true ? `${name} - 检测到的语言` : name;
+}
+
+/** Resolve the visually selected source chip without changing auto-detect mode. */
+export function selectedSourceLanguage(
+	sourceLang: string,
+	detected: string | undefined,
+	quickSources: readonly string[],
+): string {
+	if (
+		sourceLang === AUTO_DETECT &&
+		detected !== undefined &&
+		quickSources.some((code) => code === detected)
+	) {
+		return detected;
+	}
+	return sourceLang;
 }

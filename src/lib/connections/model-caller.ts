@@ -21,9 +21,11 @@ import { chat } from "@tanstack/ai";
 import type { ConcurrencyLimiter } from "../call-control/concurrency";
 import { createLatestCall } from "../call-control/latest-call";
 import { createSingleFlightWithState } from "../call-control/single-flight";
+import { logger } from "../logger";
 import { createAdapterForConnection } from "./adapters";
 import { type FailureAttribution, preflightMixedContent } from "./attribution";
 import { type CallRequirement, capabilityBlocker } from "./capability-guard";
+import { statusOf } from "./error-shape";
 import type { Connection } from "./model";
 
 /**
@@ -141,10 +143,24 @@ export function createModelCaller(deps: ModelCallerDeps): ModelCaller {
 		async call(request) {
 			const { connection } = request;
 
+			logger.info("model.call.start", {
+				connectionId: connection.id,
+				provider: connection.provider,
+				model: connection.model,
+				requirement: request.requirement,
+				stream: Boolean(request.onChunk),
+				textLength: request.userContent.length,
+			});
+
 			// Refuse before doing anything else: an unsuitable connection must
 			// never produce a request (spec `provider-connections`).
 			const blocker = capabilityBlocker(connection, request.requirement);
 			if (blocker !== undefined) {
+				logger.warn("model.call.refused", {
+					connectionId: connection.id,
+					reason: "capability",
+					detail: blocker,
+				});
 				return {
 					kind: "refused",
 					refusal: { kind: "capability", reason: blocker },
@@ -161,6 +177,11 @@ export function createModelCaller(deps: ModelCallerDeps): ModelCaller {
 				endpoint: connection.endpoint,
 			});
 			if (blocked !== undefined) {
+				logger.warn("model.call.refused", {
+					connectionId: connection.id,
+					reason: "mixed_content",
+					attribution: blocked.type,
+				});
 				return {
 					kind: "refused",
 					refusal: { kind: "mixed_content", attribution: blocked },
@@ -181,6 +202,10 @@ export function createModelCaller(deps: ModelCallerDeps): ModelCaller {
 			// it. Superseding would cancel a call that would have produced exactly
 			// the same answer, turning a harmless duplicate into a wasted request.
 			if (singleFlight.has(flightKey)) {
+				logger.debug("model.call.joined_single_flight", {
+					connectionId: connection.id,
+					requirement: request.requirement,
+				});
 				const joined = await singleFlight.run(flightKey, () =>
 					transport(request, new AbortController().signal),
 				);
@@ -197,13 +222,28 @@ export function createModelCaller(deps: ModelCallerDeps): ModelCaller {
 			);
 
 			if (outcome.kind === "superseded") {
+				logger.debug("model.call.refused", {
+					connectionId: connection.id,
+					reason: "superseded",
+				});
 				return { kind: "refused", refusal: { kind: "superseded" } };
 			}
 
 			const slot = outcome.value;
 			if (slot.kind === "superseded") {
+				logger.debug("model.call.refused", {
+					connectionId: connection.id,
+					reason: "superseded",
+				});
 				return { kind: "refused", refusal: { kind: "superseded" } };
 			}
+
+			logger.info("model.call.success", {
+				connectionId: connection.id,
+				provider: connection.provider,
+				model: connection.model,
+				resultLength: slot.value.length,
+			});
 
 			return { kind: "result", text: slot.value };
 		},
@@ -223,83 +263,101 @@ async function performCall(
 	request: ModelCallRequest,
 	signal: AbortSignal,
 ): Promise<string> {
-	const adapter = await createAdapterForConnection(
-		request.connection,
-		request.apiKey,
-	);
+	const startedAt = Date.now();
+	try {
+		const adapter = await createAdapterForConnection(
+			request.connection,
+			request.apiKey,
+		);
 
-	/** A multimodal content part, in the shape the provider layer expects. */
-	type Part =
-		| { type: "text"; text: string }
-		| {
-				type: "image";
-				source: { type: "data"; value: string; mimeType: string };
-		  };
+		/** A multimodal content part, in the shape the provider layer expects. */
+		type Part =
+			| { type: "text"; text: string }
+			| {
+					type: "image";
+					source: { type: "data"; value: string; mimeType: string };
+			  };
 
-	/**
-	 * User-side content.
-	 *
-	 * With no images this stays the plain string it has always been, so the text
-	 * path's message is unchanged. Images switch it to the part array the
-	 * multimodal providers require, text first so the instruction precedes the
-	 * picture it refers to.
-	 */
-	const userContent: string | Part[] =
-		request.images === undefined || request.images.length === 0
-			? request.userContent
-			: [
-					{ type: "text" as const, text: request.userContent },
-					...request.images.map((image) => ({
-						type: "image" as const,
-						source: {
-							type: "data" as const,
-							value: image.base64,
-							mimeType: image.mimeType,
-						},
-					})),
-				];
+		/**
+		 * User-side content.
+		 *
+		 * With no images this stays the plain string it has always been, so the text
+		 * path's message is unchanged. Images switch it to the part array the
+		 * multimodal providers require, text first so the instruction precedes the
+		 * picture it refers to.
+		 */
+		const userContent: string | Part[] =
+			request.images === undefined || request.images.length === 0
+				? request.userContent
+				: [
+						{ type: "text" as const, text: request.userContent },
+						...request.images.map((image) => ({
+							type: "image" as const,
+							source: {
+								type: "data" as const,
+								value: image.base64,
+								mimeType: image.mimeType,
+							},
+						})),
+					];
 
-	const messages: Array<{
-		role: "system" | "user";
-		content: string | Part[];
-	}> = [];
-	if (
-		request.systemInstruction !== undefined &&
-		request.systemInstruction !== ""
-	) {
-		messages.push({ role: "system", content: request.systemInstruction });
-	}
-	messages.push({ role: "user", content: userContent });
+		const messages: Array<{
+			role: "system" | "user";
+			content: string | Part[];
+		}> = [];
+		if (
+			request.systemInstruction !== undefined &&
+			request.systemInstruction !== ""
+		) {
+			messages.push({ role: "system", content: request.systemInstruction });
+		}
+		messages.push({ role: "user", content: userContent });
 
-	if (request.onChunk) {
-		const stream = chat({
+		if (request.onChunk) {
+			const stream = chat({
+				adapter,
+				messages,
+				abortController: createAbortControllerFrom(signal),
+			} as Parameters<typeof chat>[0]);
+
+			let collected = "";
+			for await (const event of stream as AsyncIterable<{
+				type?: string;
+				delta?: string;
+			}>) {
+				const delta = event?.delta;
+				if (typeof delta === "string" && delta !== "") {
+					collected += delta;
+					request.onChunk(delta);
+				}
+			}
+			return collected;
+		}
+
+		const text = await chat({
 			adapter,
 			messages,
+			stream: false,
 			abortController: createAbortControllerFrom(signal),
 		} as Parameters<typeof chat>[0]);
 
-		let collected = "";
-		for await (const event of stream as AsyncIterable<{
-			type?: string;
-			delta?: string;
-		}>) {
-			const delta = event?.delta;
-			if (typeof delta === "string" && delta !== "") {
-				collected += delta;
-				request.onChunk(delta);
-			}
+		return typeof text === "string" ? text : "";
+	} catch (error) {
+		const fields = {
+			connectionId: request.connection.id,
+			provider: request.connection.provider,
+			model: request.connection.model,
+			durationMs: Date.now() - startedAt,
+			error: error instanceof Error ? error.message : String(error),
+			status: statusOf(error),
+		};
+		if (signal.aborted) {
+			logger.debug("model.call.aborted", fields, { secrets: [request.apiKey] });
+		} else {
+			logger.error("model.call.failed", fields, { secrets: [request.apiKey] });
 		}
-		return collected;
+		throw error;
 	}
-
-	const text = await chat({
-		adapter,
-		messages,
-		stream: false,
-		abortController: createAbortControllerFrom(signal),
-	} as Parameters<typeof chat>[0]);
-
-	return typeof text === "string" ? text : "";
 }
 
 /**

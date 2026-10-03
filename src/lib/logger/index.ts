@@ -43,6 +43,8 @@ export interface LogSink {
 	write(record: LogRecord): void;
 }
 
+import { diagnosticSink } from "./diagnostic/sink";
+
 /** Console sink. Writes nothing when there is no console (prerender). */
 const consoleSink: LogSink = {
 	write(record) {
@@ -57,6 +59,30 @@ const consoleSink: LogSink = {
 		else if (record.level === "warn") console.warn(prefix, payload);
 		else if (record.level === "info") console.info(prefix, payload);
 		else console.debug(prefix, payload);
+	},
+};
+
+/** Active sinks for the application logger. */
+const activeSinks: Set<LogSink> = new Set([consoleSink, diagnosticSink]);
+
+/** Register an additional log sink. Returns an unsubscribe function. */
+export function registerLogSink(sink: LogSink): () => void {
+	activeSinks.add(sink);
+	return () => {
+		activeSinks.delete(sink);
+	};
+}
+
+/** Broadcast sink distributing records to all registered sinks safely. */
+export const broadcastSink: LogSink = {
+	write(record) {
+		for (const sink of activeSinks) {
+			try {
+				sink.write(record);
+			} catch {
+				// A failing sink must not affect others
+			}
+		}
 	},
 };
 
@@ -85,7 +111,7 @@ export interface LoggerDeps {
 
 /** Create a logger. */
 export function createLogger(deps: LoggerDeps = {}): Logger {
-	const sink = deps.sink ?? consoleSink;
+	const sink = deps.sink ?? broadcastSink;
 	const levelOf = deps.level ?? (() => resolveLogLevel());
 
 	function emit(

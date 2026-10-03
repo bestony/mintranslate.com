@@ -30,6 +30,7 @@ import { maskSecret } from "#/lib/credentials/redact";
 import { createTranslationMemoryPreference } from "#/lib/translation-memory";
 import { usePwa } from "../pwa/usePwa";
 import { ConnectionForm, PresetHint } from "./ConnectionForm";
+import { DiagnosticLogsSection } from "./DiagnosticLogsSection";
 import { PrivacyNotice } from "./PrivacyNotice";
 
 const sectionClass = "island-shell mt-6 rounded-md p-6";
@@ -596,6 +597,8 @@ export function SettingsPage() {
 					</p>
 				)}
 			</section>
+
+			<DiagnosticLogsSection />
 		</>
 	);
 }

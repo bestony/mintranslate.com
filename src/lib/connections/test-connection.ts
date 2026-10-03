@@ -14,6 +14,7 @@ import { chat } from "@tanstack/ai";
 
 import { parseRetryAfter } from "../call-control/backoff";
 import { scrubSecrets } from "../credentials/redact";
+import { logger } from "../logger";
 import { createAdapterForConnection, probeModelOptions } from "./adapters";
 import {
 	attributeFailure,
@@ -89,6 +90,12 @@ export async function testConnection(
 	const controller = new AbortController();
 	const startedAt = Date.now();
 
+	logger.info("connection.test.start", {
+		connectionId: connection.id,
+		provider: connection.provider,
+		model: connection.model,
+	});
+
 	// Decide before spending a request. A mixed-content refusal is guaranteed, and
 	// the error the browser would raise is indistinguishable from a CORS rejection
 	// or an unreachable host — so the only way to report the real cause is to ask
@@ -100,9 +107,15 @@ export async function testConnection(
 		endpoint: connection.endpoint,
 	});
 	if (blocked !== undefined) {
+		const latencyMs = Date.now() - startedAt;
+		logger.warn("connection.test.blocked", {
+			connectionId: connection.id,
+			endpoint: connection.endpoint,
+			reason: "mixed_content",
+		});
 		return {
 			ok: false,
-			latencyMs: Date.now() - startedAt,
+			latencyMs,
 			attribution: blocked,
 		};
 	}
@@ -130,7 +143,15 @@ export async function testConnection(
 			abortController: controller,
 		} as Parameters<typeof chat>[0]);
 
-		return { ok: true, latencyMs: Date.now() - startedAt };
+		const latencyMs = Date.now() - startedAt;
+		logger.info("connection.test.success", {
+			connectionId: connection.id,
+			provider: connection.provider,
+			model: connection.model,
+			latencyMs,
+		});
+
+		return { ok: true, latencyMs };
 	} catch (error) {
 		const status = statusOf(error);
 
@@ -152,9 +173,20 @@ export async function testConnection(
 				? parseRetryAfter(retryAfterOf(error))
 				: undefined;
 
+		const latencyMs = Date.now() - startedAt;
+		logger.warn("connection.test.failed", {
+			connectionId: connection.id,
+			provider: connection.provider,
+			model: connection.model,
+			latencyMs,
+			status,
+			attributionType: attribution.type,
+			diagnostic,
+		});
+
 		return {
 			ok: false,
-			latencyMs: Date.now() - startedAt,
+			latencyMs,
 			attribution,
 			...(diagnostic !== "" && { diagnostic }),
 			...(suggestedWaitMs !== undefined && { suggestedWaitMs }),
