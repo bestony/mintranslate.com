@@ -11,25 +11,27 @@
  */
 
 /** Modes the translation workspace offers. */
-export const WORKSPACE_MODES = ["text", "images"] as const;
+export const WORKSPACE_MODES = ["text", "images", "docs"] as const;
 export type WorkspaceMode = (typeof WORKSPACE_MODES)[number];
 
 /** Value written to the URL for each mode. */
 export const MODE_URL_VALUES: Record<WorkspaceMode, string> = {
 	text: "translate",
 	images: "images",
+	docs: "docs",
 };
 
 /**
  * Resolve a URL `op` value to a workspace mode.
  *
- * Only `images` selects image mode. Everything else — including the legacy
- * `translate` value, an empty string, or anything unrecognised — is text mode,
- * which is the only safe default: the text workspace always works, and an unknown
- * mode has no interface to show.
+ * `images` and `docs` select their corresponding mode. Everything else —
+ * including the legacy `translate` value, an empty string, or anything
+ * unrecognised — is text mode, which is the safe default.
  */
 export function modeFromUrl(value: string | undefined): WorkspaceMode {
-	return value === MODE_URL_VALUES.images ? "images" : "text";
+	if (value === MODE_URL_VALUES.images) return "images";
+	if (value === MODE_URL_VALUES.docs) return "docs";
+	return "text";
 }
 
 /** The URL value for a mode. */

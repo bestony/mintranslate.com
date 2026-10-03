@@ -30,18 +30,23 @@ describe("resolving the URL value", () => {
 	});
 
 	it("falls back to text for anything unrecognised", () => {
-		for (const value of ["", undefined, "docs", "websites", "IMAGE", "image"]) {
+		for (const value of ["", undefined, "websites", "IMAGE", "image"]) {
 			expect(modeFromUrl(value), JSON.stringify(value)).toBe("text");
 		}
 	});
+
+	it("selects document mode for the docs value", () => {
+		expect(modeFromUrl("docs")).toBe("docs");
+	});
 });
 
-describe("the image value is one analytics already knows", () => {
-	it("appears in the analytics mode set", () => {
-		// This is what lets an image run be attributed to images without touching the
-		// event contract.
+describe("workspace values are known to analytics", () => {
+	it.each([
+		"images",
+		"docs",
+	] as const)("includes the %s mode in the analytics mode set", (mode) => {
 		expect(ANALYTICS_MODES as readonly string[]).toContain(
-			MODE_URL_VALUES.images,
+			MODE_URL_VALUES[mode],
 		);
 	});
 });

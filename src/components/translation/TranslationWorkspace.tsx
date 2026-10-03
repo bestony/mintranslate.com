@@ -15,7 +15,15 @@
  */
 
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	lazy,
+	Suspense,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import {
 	createAnalytics,
 	createThrottledSubmit,
@@ -48,7 +56,12 @@ import {
 	setFavorite,
 	writeRecord,
 } from "#/lib/history/db";
-import { modeFromUrl, urlValueForMode, type WorkspaceMode } from "#/lib/image";
+import {
+	modeFromUrl,
+	urlValueForMode,
+	WORKSPACE_MODES,
+	type WorkspaceMode,
+} from "#/lib/image";
 import {
 	AUTO_DETECT,
 	canSwap,
@@ -117,6 +130,13 @@ function useModifierLabel(): string {
 
 /** One connection's limiter set, shared across the component's lifetime. */
 const limiters = createKeyedLimiters(2);
+
+/** Keep document parsing and its ZIP dependency out of the first-screen chunk. */
+const DocumentTranslationMode = lazy(() =>
+	import("../document/DocumentTranslationMode").then((module) => ({
+		default: module.DocumentTranslationMode,
+	})),
+);
 
 /** Chip sizes and alignment. */
 const CHIP =
@@ -393,6 +413,7 @@ export function TranslationWorkspace() {
 			setTargetLang(restored.targetLang);
 		}
 		if (restored.text !== undefined) setText(restored.text);
+		setMode(modeFromUrl(restored.mode));
 	}, [reportLanguageChange]);
 
 	// Mirror state into the URL. `writeWorkspaceUrl` uses replaceState only.
@@ -912,9 +933,9 @@ export function TranslationWorkspace() {
 	);
 	const sourceIsAuto = selectedSourceLang === AUTO_DETECT;
 
-	// Image mode. Rendered as its own subtree with the same chrome, so the text-mode
-	// markup below stays byte-identical and the two modes never share state.
-	if (mode === "images") {
+	// Non-text modes are rendered as their own subtree with the same chrome, so the
+	// text-mode markup below stays byte-identical and the modes never share state.
+	if (mode === "images" || mode === "docs") {
 		return (
 			<div className="flex min-h-0 flex-1 flex-col">
 				<div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:p-6">
@@ -924,7 +945,7 @@ export function TranslationWorkspace() {
 							role="toolbar"
 							aria-label="翻译模式"
 						>
-							{(["text", "images"] as const).map((candidate) => (
+							{WORKSPACE_MODES.map((candidate) => (
 								<button
 									key={candidate}
 									type="button"
@@ -936,7 +957,11 @@ export function TranslationWorkspace() {
 									}
 									onClick={() => setMode(candidate)}
 								>
-									{candidate === "text" ? "文本翻译" : "图片翻译"}
+									{candidate === "text"
+										? "文本翻译"
+										: candidate === "images"
+											? "图片翻译"
+											: "文档翻译"}
 								</button>
 							))}
 						</div>
@@ -949,26 +974,46 @@ export function TranslationWorkspace() {
 						)}
 					</div>
 
-					<ImageTranslationMode
-						connection={active}
-						apiKey={active ? store.keyFor(active.id) : ""}
-						sourceLang={sourceLang}
-						targetLang={targetLang}
-						sourceLanguageLabel={languageByCode(sourceLang)?.nameZh}
-						targetLanguageLabel={
-							languageByCode(targetLang)?.nameZh ?? targetLang
-						}
-						styleLabel={
-							TRANSLATION_STYLES.find((entry) => entry.id === promptStyle)
-								?.label
-						}
-						styleDescription={
-							TRANSLATION_STYLES.find((entry) => entry.id === promptStyle)
-								?.description
-						}
-						customInstruction={customInstruction}
-						analytics={analytics}
-					/>
+					{mode === "images" ? (
+						<ImageTranslationMode
+							connection={active}
+							apiKey={active ? store.keyFor(active.id) : ""}
+							sourceLang={sourceLang}
+							targetLang={targetLang}
+							sourceLanguageLabel={languageByCode(sourceLang)?.nameZh}
+							targetLanguageLabel={
+								languageByCode(targetLang)?.nameZh ?? targetLang
+							}
+							styleLabel={
+								TRANSLATION_STYLES.find((entry) => entry.id === promptStyle)
+									?.label
+							}
+							styleDescription={
+								TRANSLATION_STYLES.find((entry) => entry.id === promptStyle)
+									?.description
+							}
+							customInstruction={customInstruction}
+							analytics={analytics}
+						/>
+					) : (
+						<Suspense
+							fallback={
+								<p className="text-muted-foreground text-xs">
+									正在准备文档模式…
+								</p>
+							}
+						>
+							<DocumentTranslationMode
+								connection={active}
+								apiKey={active ? store.keyFor(active.id) : ""}
+								sourceLang={sourceLang}
+								targetLang={targetLang}
+								styleId={promptStyle}
+								customInstruction={customInstruction}
+								analytics={analytics}
+							/>
+						</Suspense>
+					)}
 				</div>
 			</div>
 		);
@@ -992,7 +1037,7 @@ export function TranslationWorkspace() {
 							role="toolbar"
 							aria-label="翻译模式"
 						>
-							{(["text", "images"] as const).map((candidate) => (
+							{WORKSPACE_MODES.map((candidate) => (
 								<button
 									key={candidate}
 									type="button"
@@ -1004,7 +1049,11 @@ export function TranslationWorkspace() {
 									}
 									onClick={() => setMode(candidate)}
 								>
-									{candidate === "text" ? "文本翻译" : "图片翻译"}
+									{candidate === "text"
+										? "文本翻译"
+										: candidate === "images"
+											? "图片翻译"
+											: "文档翻译"}
 								</button>
 							))}
 						</div>
