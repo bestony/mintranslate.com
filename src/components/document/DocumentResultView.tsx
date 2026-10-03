@@ -25,7 +25,7 @@ export function DocumentResultView({
 			className="mt-4 rounded-md border border-border bg-surface p-4"
 			aria-label="文档结果"
 		>
-			{notice !== undefined && (
+			{notice !== undefined && !empty && (
 				<p className="text-sm" role="alert">
 					{notice}
 				</p>
