@@ -29,6 +29,10 @@ import type {
 	TestRefusal,
 } from "#/lib/connections/test-controller";
 import { maskSecret } from "#/lib/credentials/redact";
+import {
+	ModelDiscoveryField,
+	type ModelDiscoveryFieldProps,
+} from "./ModelDiscoveryField";
 
 interface ConnectionFormProps {
 	readonly connection: Connection;
@@ -37,6 +41,8 @@ interface ConnectionFormProps {
 	readonly onProviderChange: (provider: ProviderId) => void;
 	readonly onKeyChange: (key: string) => void;
 	readonly onTested: (status: "ok" | "failed", detail?: string) => void;
+	/** Optional injection seam for model-list tests; production uses the default. */
+	readonly modelListController?: ModelDiscoveryFieldProps["modelListController"];
 	/**
 	 * Pacing controller for connection tests. Owned by the parent so switching or
 	 * deleting a connection can abort an in-flight test for it.
@@ -114,6 +120,7 @@ export function ConnectionForm({
 	onKeyChange,
 	onTested,
 	testController,
+	modelListController: injectedModelListController,
 }: ConnectionFormProps) {
 	const [revealKey, setRevealKey] = useState(false);
 	/** Analytics entry point for configuration and connection-test events. */
@@ -265,22 +272,15 @@ export function ConnectionForm({
 					endpoint={connection.endpoint}
 				/>
 
-				<label className="block">
-					<span className={labelClass}>Model</span>
-					<input
-						id="connection-model"
-						name="connection-model"
-						className={inputClass}
-						value={connection.model}
-						list={`models-${connection.id}`}
-						onChange={(event) => onChange({ model: event.target.value })}
-					/>
-					<datalist id={`models-${connection.id}`}>
-						{preset?.models.map((model) => (
-							<option key={model} value={model} />
-						))}
-					</datalist>
-				</label>
+				<ModelDiscoveryField
+					connection={connection}
+					apiKey={apiKey}
+					presetModels={preset?.models ?? []}
+					labelClass={labelClass}
+					inputClass={inputClass}
+					onChange={onChange}
+					modelListController={injectedModelListController}
+				/>
 
 				<label className="block md:col-span-2">
 					<span className={labelClass}>API Key</span>
