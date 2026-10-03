@@ -330,7 +330,7 @@ export function ConnectionForm({
 				<label className="block" htmlFor="connection-provider">
 					<span className={labelClass}>服务商</span>
 					{builtin ? (
-						<p className="mt-2 min-h-11 rounded-md border border-border bg-surface px-4 py-3 text-sm">
+						<p className="mt-2 min-h-11 rounded-md border border-border bg-surface px-4 py-2 text-sm">
 							{connection.provider === "builtin-translator"
 								? "浏览器内置 Translator"
 								: "浏览器内置 Prompt API"}
