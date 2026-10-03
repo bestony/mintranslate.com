@@ -61,7 +61,11 @@ describe("Built-in AI capability detection", () => {
 		});
 		expect(result).toEqual({ state: "available" });
 		expect(availability).toHaveBeenCalledWith(
-			expect.objectContaining({ language: "ja" }),
+			expect.objectContaining({
+				language: "ja",
+				expectedInputs: [{ type: "text" }, { type: "image" }],
+				expectedOutputs: [{ type: "text" }],
+			}),
 		);
 		expect(fetchSpy).not.toHaveBeenCalled();
 		fetchSpy.mockRestore();

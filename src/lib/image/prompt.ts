@@ -84,6 +84,29 @@ export function renderGlossarySection(
 }
 
 /** The response shape the model is asked to produce. */
+export const IMAGE_RESPONSE_CONSTRAINT = {
+	type: "array",
+	items: {
+		type: "object",
+		properties: {
+			source: { type: "string" },
+			target: { type: "string" },
+			box: {
+				type: "object",
+				properties: {
+					x: { type: "number" },
+					y: { type: "number" },
+					width: { type: "number" },
+					height: { type: "number" },
+				},
+				required: ["x", "y", "width", "height"],
+			},
+			uncertain: { type: "boolean" },
+		},
+		required: ["source", "target", "uncertain"],
+	},
+} as const;
+
 const RESPONSE_CONTRACT = [
 	"Return ONLY a JSON array, with no prose before or after it.",
 	"Each element describes one text region and has exactly these fields:",

@@ -17,6 +17,7 @@
  */
 
 import { chat } from "@tanstack/ai";
+import type { BuiltinLanguageModelClient } from "../builtin-ai/language-model";
 import {
 	type BuiltinDetectedLanguage,
 	type BuiltinTranslatorClient,
@@ -65,6 +66,8 @@ export interface ModelCallRequest {
 	/** Internal language codes used by browser-native translation APIs. */
 	readonly sourceLanguage?: string;
 	readonly targetLanguage?: string;
+	/** Structured output constraint used by local multimodal calls. */
+	readonly responseConstraint?: unknown;
 	/** Images to attach. Present only for multimodal calls. */
 	readonly images?: readonly ModelImageInput[];
 	/**
@@ -145,16 +148,19 @@ export interface ModelCallerDeps {
 	readonly transport?: ModelTransport;
 	/** Injectable browser-native translator; never routed through an adapter. */
 	readonly builtinTranslator?: BuiltinTranslatorClient;
+	/** Injectable browser-native multimodal model; never routed through an adapter. */
+	readonly builtinLanguageModel?: BuiltinLanguageModelClient;
 }
 
 /** Create the caller. */
 export function createModelCaller(deps: ModelCallerDeps): ModelCaller {
 	const builtinTranslator =
 		deps.builtinTranslator ?? createBuiltinTranslatorClient();
+	const builtinLanguageModel = deps.builtinLanguageModel;
 	const transport =
 		deps.transport ??
 		((request: ModelCallRequest, signal: AbortSignal) =>
-			performCall(request, signal, builtinTranslator));
+			performCall(request, signal, builtinTranslator, builtinLanguageModel));
 	const latestPerConnection = new Map<
 		string,
 		ReturnType<typeof createLatestCall>
@@ -300,6 +306,7 @@ async function performCall(
 	request: ModelCallRequest,
 	signal: AbortSignal,
 	builtinTranslator: BuiltinTranslatorClient,
+	builtinLanguageModel?: BuiltinLanguageModelClient,
 ): Promise<string | ModelTransportResult> {
 	const startedAt = Date.now();
 	try {
@@ -333,7 +340,24 @@ async function performCall(
 		}
 
 		if (isBuiltinProvider(request.connection.provider)) {
-			throw new Error("内置多模态连接的调用路径尚未接入图片/文本会话。");
+			if (request.connection.provider !== "builtin-multimodal")
+				throw new Error("未知的内置连接类型。");
+			if (builtinLanguageModel === undefined)
+				throw new Error("内置多模态模型未初始化。");
+			const input = {
+				text: request.userContent,
+				...(request.images !== undefined && { images: request.images }),
+			};
+			const text = request.onChunk
+				? await builtinLanguageModel.promptStreaming(input, {
+						signal,
+						responseConstraint: request.responseConstraint,
+					})
+				: await builtinLanguageModel.prompt(input, {
+						signal,
+						responseConstraint: request.responseConstraint,
+					});
+			return { text };
 		}
 
 		const adapter = await createAdapterForConnection(

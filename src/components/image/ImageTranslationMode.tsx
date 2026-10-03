@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Analytics } from "#/lib/analytics/track";
+import { createBuiltinLanguageModelClient } from "#/lib/builtin-ai/language-model";
 import { createKeyedLimiters } from "#/lib/call-control/concurrency";
 import type { Connection } from "#/lib/connections/model";
 import type { GlossaryPromptTerm } from "#/lib/connections/styles";
@@ -86,6 +87,7 @@ export function ImageTranslationMode({
 	const [notice, setNotice] = useState<string | undefined>(undefined);
 	const [regions, setRegions] = useState<readonly ImageRegion[]>([]);
 	const [rawText, setRawText] = useState<string | undefined>(undefined);
+	const [glossaryCount, setGlossaryCount] = useState(0);
 	const [imageSrc, setImageSrc] = useState<string | undefined>(undefined);
 	/** Natural size of the processed image, so it is never upscaled for display. */
 	const [imageSize, setImageSize] = useState<
@@ -98,9 +100,17 @@ export function ImageTranslationMode({
 	const submissionSeq = useRef(0);
 	const objectUrl = useRef<string | undefined>(undefined);
 
-	const translator = useMemo(
-		() => createImageTranslator({ limiterFor: (id) => limiters.for(id) }),
+	const builtinLanguageModel = useMemo(
+		() => createBuiltinLanguageModelClient(),
 		[],
+	);
+	const translator = useMemo(
+		() =>
+			createImageTranslator({
+				limiterFor: (id) => limiters.for(id),
+				builtinLanguageModel,
+			}),
+		[builtinLanguageModel],
 	);
 
 	/**
@@ -161,6 +171,7 @@ export function ImageTranslationMode({
 		async (file: File) => {
 			setNotice(undefined);
 			setRawText(undefined);
+			setGlossaryCount(0);
 			setRegions([]);
 			setStage("preparing");
 			setElapsedMs(0);
@@ -207,6 +218,7 @@ export function ImageTranslationMode({
 				});
 
 				const glossaryMatches = await loadGlossaryTerms();
+				setGlossaryCount(glossaryMatches.length);
 				if (glossaryMatches.length > 0) {
 					logger.debug("image.mode.glossary.injected", {
 						requestId,
@@ -239,6 +251,8 @@ export function ImageTranslationMode({
 					imageMimeType: processed.mimeType,
 					imageKey,
 					targetLanguageLabel,
+					sourceLanguage: sourceLang,
+					targetLanguage: targetLang,
 					sourceLanguageLabel,
 					styleLabel,
 					styleDescription,
@@ -400,13 +414,20 @@ export function ImageTranslationMode({
 			)}
 
 			{imageSrc !== undefined && stage === "done" && (
-				<ImageResultView
-					regions={regions}
-					imageSrc={imageSrc}
-					naturalWidth={imageSize?.width}
-					imageAlt="待翻译的图片，识别到的文字区域已在其上标出"
-					rawText={rawText}
-				/>
+				<>
+					<ImageResultView
+						regions={regions}
+						imageSrc={imageSrc}
+						naturalWidth={imageSize?.width}
+						imageAlt="待翻译的图片，识别到的文字区域已在其上标出"
+						rawText={rawText}
+					/>
+					{connection?.provider === "builtin-multimodal" && (
+						<p className="mt-2 text-muted-foreground text-xs">
+							术语已应用：{glossaryCount} 条；当前通道支持翻译风格。
+						</p>
+					)}
+				</>
 			)}
 		</section>
 	);

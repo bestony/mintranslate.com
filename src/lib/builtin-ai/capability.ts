@@ -189,7 +189,7 @@ export async function queryLanguageModelAvailability(
 	try {
 		const value = await api.availability({
 			language: targetLanguage,
-			expectedInputs: [{ type: "text" }],
+			expectedInputs: [{ type: "text" }, { type: "image" }],
 			expectedOutputs: [{ type: "text" }],
 		});
 		const state = normalizeAvailability(value);

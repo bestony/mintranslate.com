@@ -14,6 +14,8 @@
  * let either one consume the other's allowance.
  */
 
+import { promptLanguageBlocker } from "../builtin-ai/capability";
+import type { BuiltinLanguageModelClient } from "../builtin-ai/language-model";
 import {
 	decideRetry,
 	isRateLimited,
@@ -29,7 +31,7 @@ import type { GlossaryPromptTerm } from "../connections/styles";
 import { logger } from "../logger";
 import type { ImageRegion } from "./model";
 import { parseRegions } from "./parse";
-import { assembleImagePrompt } from "./prompt";
+import { assembleImagePrompt, IMAGE_RESPONSE_CONSTRAINT } from "./prompt";
 
 /** What a caller supplies for one image translation. */
 export interface ImageTranslationRequest {
@@ -45,6 +47,9 @@ export interface ImageTranslationRequest {
 	 */
 	readonly imageKey: string;
 	readonly targetLanguageLabel: string;
+	/** Internal language codes, required for the built-in multimodal preflight. */
+	readonly sourceLanguage?: string;
+	readonly targetLanguage?: string;
 	readonly sourceLanguageLabel?: string;
 	readonly styleLabel?: string;
 	readonly styleDescription?: string;
@@ -68,6 +73,8 @@ export type ImageTranslationOutcome =
 /** What the orchestration needs from the surrounding application. */
 export interface ImageTranslationDeps {
 	readonly limiterFor: (connectionId: string) => ConcurrencyLimiter;
+	/** Main-thread Prompt API client for the built-in multimodal provider. */
+	readonly builtinLanguageModel?: BuiltinLanguageModelClient;
 	/** Sleep, injectable so backoff does not slow tests. */
 	readonly sleep?: (ms: number) => Promise<void>;
 	/** Retry budget policy override, for tests. */
@@ -88,12 +95,30 @@ export interface ImageTranslator {
 export function createImageTranslator(
 	deps: ImageTranslationDeps,
 ): ImageTranslator {
-	const caller = createModelCaller({ limiterFor: deps.limiterFor });
+	const caller = createModelCaller({
+		limiterFor: deps.limiterFor,
+		builtinLanguageModel: deps.builtinLanguageModel,
+	});
 	const sleep =
 		deps.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
 
 	return {
 		async translate(request) {
+			if (
+				request.connection.provider === "builtin-multimodal" &&
+				request.targetLanguage !== undefined
+			) {
+				const blocker = promptLanguageBlocker(
+					request.targetLanguage,
+					request.sourceLanguage,
+				);
+				if (blocker !== undefined) {
+					logger.debug("image.run.language-refused", {
+						requestId: request.requestId,
+					});
+					return { kind: "refused", kindReason: blocker };
+				}
+			}
 			const prompt = assembleImagePrompt({
 				styleLabel: request.styleLabel,
 				styleDescription: request.styleDescription,
@@ -117,6 +142,12 @@ export function createImageTranslator(
 						requirement: "vision",
 						systemInstruction: prompt.systemInstruction,
 						userContent: prompt.userContent,
+						sourceLanguage: request.sourceLanguage,
+						targetLanguage: request.targetLanguage,
+						responseConstraint:
+							request.connection.provider === "builtin-multimodal"
+								? IMAGE_RESPONSE_CONSTRAINT
+								: undefined,
 						images: [
 							{ base64: request.imageBase64, mimeType: request.imageMimeType },
 						],

@@ -21,6 +21,7 @@ import {
 	createThrottledSubmit,
 	reportedHost,
 } from "#/lib/analytics/track";
+import { createBuiltinLanguageModelClient } from "#/lib/builtin-ai/language-model";
 import { createBuiltinTranslatorClient } from "#/lib/builtin-ai/translator";
 import { createKeyedLimiters } from "#/lib/call-control/concurrency";
 import {
@@ -283,7 +284,13 @@ export function TranslationWorkspace() {
 	const [promptStyle, setPromptStyle] = useState<TranslationStyleId>("free");
 	const [customInstruction, setCustomInstruction] = useState("");
 
-	const active: Connection | undefined = store.activeConnection;
+	const active: Connection | undefined =
+		store.activeConnection ??
+		store.usableConnections.find((connection) =>
+			mode === "images"
+				? connection.provider === "builtin-multimodal"
+				: connection.provider === "builtin-translator",
+		);
 	const activeId = active?.id;
 
 	/**
@@ -320,6 +327,10 @@ export function TranslationWorkspace() {
 
 	/** One main-thread browser translator client shared by calls and activation UI. */
 	const builtinTranslator = useMemo(() => createBuiltinTranslatorClient(), []);
+	const builtinLanguageModel = useMemo(
+		() => createBuiltinLanguageModelClient(),
+		[],
+	);
 
 	/**
 	 * Report a language change.
@@ -353,8 +364,9 @@ export function TranslationWorkspace() {
 			createModelCaller({
 				limiterFor: (id) => limiters.for(id),
 				builtinTranslator,
+				builtinLanguageModel,
 			}),
-		[builtinTranslator],
+		[builtinLanguageModel, builtinTranslator],
 	);
 
 	// Pick up the style chosen in settings. Read once: the workspace does not own
@@ -508,7 +520,10 @@ export function TranslationWorkspace() {
 		() =>
 			createTranslationController({
 				glossaryVersion: getGlossaryVersion,
-				glossaryMatcher: matchTerms,
+				glossaryMatcher: async (text, pair) =>
+					live.current.active?.provider === "builtin-translator"
+						? []
+						: matchTerms(text, pair),
 				callbacks: {
 					onStart: (_requestId, input) => {
 						const { reportSubmit } = live.current;
@@ -1265,27 +1280,30 @@ export function TranslationWorkspace() {
 							className="mt-2 flex flex-wrap items-start gap-2 text-muted-foreground text-xs"
 							aria-live="polite"
 						>
-							<span>术语命中：{glossaryMatches.length} 条</span>
+							{active?.provider !== "builtin-translator" && (
+								<span>术语命中：{glossaryMatches.length} 条</span>
+							)}
 							{memoryReferenceCount > 0 && (
 								<span>参考译文：{memoryReferenceCount} 条</span>
 							)}
 							{memoryHit && <span>来自翻译记忆</span>}
-							{glossaryMatches.length > 0 && (
-								<details className="basis-full">
-									<summary className="min-h-11 cursor-pointer py-2">
-										查看命中术语
-									</summary>
-									<ul className="space-y-2 border-border border-l-2 pl-4">
-										{glossaryMatches.map((match) => (
-											<li
-												key={`${match.start}-${match.end}-${match.source}-${match.target}`}
-											>
-												{match.source} → {match.target}
-											</li>
-										))}
-									</ul>
-								</details>
-							)}
+							{active?.provider !== "builtin-translator" &&
+								glossaryMatches.length > 0 && (
+									<details className="basis-full">
+										<summary className="min-h-11 cursor-pointer py-2">
+											查看命中术语
+										</summary>
+										<ul className="space-y-2 border-border border-l-2 pl-4">
+											{glossaryMatches.map((match) => (
+												<li
+													key={`${match.start}-${match.end}-${match.source}-${match.target}`}
+												>
+													{match.source} → {match.target}
+												</li>
+											))}
+										</ul>
+									</details>
+								)}
 						</div>
 					)}
 
