@@ -62,8 +62,9 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { TranslationWorkspace } from "#/components/translation/TranslationWorkspace";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-	true;
+(
+	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 /** Type into a React-controlled textarea the way the browser does. */
 function typeInto(textarea: HTMLTextAreaElement, value: string): void {
