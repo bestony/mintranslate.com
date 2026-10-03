@@ -230,15 +230,16 @@ export function rebuildOoxml(
 		if (xml === undefined) continue;
 
 		const paragraphs = paragraphsIn(path, xml, spec);
+		const paragraphByIndex = new Map(
+			paragraphs.map((paragraph) => [paragraph.index, paragraph] as const),
+		);
 		const edits: {
 			span: ReturnType<typeof findTextSpans>[number];
 			value: string;
 		}[] = [];
 
 		for (const replacement of partReplacements) {
-			const paragraph = paragraphs.find(
-				(candidate) => candidate.index === replacement.location.paragraph,
-			);
+			const paragraph = paragraphByIndex.get(replacement.location.paragraph);
 			if (paragraph === undefined) continue;
 
 			// Segment 0 means the paragraph is whole. A paragraph split into several

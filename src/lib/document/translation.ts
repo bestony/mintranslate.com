@@ -39,7 +39,7 @@ import type {
 } from "../translation-memory";
 import type { DocumentTaskRecord, TextChunk } from "./model";
 import {
-	applyChunkResult,
+	applyChunkResultAt,
 	beginProcessing,
 	pendingChunks,
 	progressOf,
@@ -235,6 +235,9 @@ export async function translateDocument(
 		await save(current);
 
 		const pending = pendingChunks(current);
+		const chunkIndexById = new Map(
+			current.chunks.map((entry, index) => [entry.chunk.id, index] as const),
+		);
 		if (pending.length === 0) {
 			const succeeded = transition(current, "succeeded", { now: now() });
 			if (!succeeded.ok) throw new Error(succeeded.reason);
@@ -271,7 +274,9 @@ export async function translateDocument(
 					const remembered = await deps.memory.findTranslation(text, context);
 					if (remembered !== undefined) {
 						memoryHits += 1;
-						current = applyChunkResult(current, entry.chunk.id, remembered, {
+						const index = chunkIndexById.get(entry.chunk.id);
+						if (index === undefined) return;
+						current = applyChunkResultAt(current, index, remembered, {
 							fromMemory: true,
 							now: now(),
 						});
@@ -331,7 +336,9 @@ export async function translateDocument(
 								: "model call was superseded",
 						);
 					}
-					current = applyChunkResult(current, entry.chunk.id, outcome.text, {
+					const index = chunkIndexById.get(entry.chunk.id);
+					if (index === undefined) return;
+					current = applyChunkResultAt(current, index, outcome.text, {
 						fromMemory: false,
 						now: now(),
 					});

@@ -106,13 +106,26 @@ export function applyChunkResult(
 	target: string,
 	options: { readonly fromMemory: boolean; readonly now: number },
 ): DocumentTaskRecord {
+	const index = record.chunks.findIndex((entry) => entry.chunk.id === chunkId);
+	return index === -1
+		? record
+		: applyChunkResultAt(record, index, target, options);
+}
+
+/** Record a result when the caller already indexed the chunk. */
+export function applyChunkResultAt(
+	record: DocumentTaskRecord,
+	index: number,
+	target: string,
+	options: { readonly fromMemory: boolean; readonly now: number },
+): DocumentTaskRecord {
+	const entry = record.chunks[index];
+	if (entry === undefined) return record;
+	const chunks = [...record.chunks];
+	chunks[index] = { ...entry, target, fromMemory: options.fromMemory };
 	return {
 		...record,
-		chunks: record.chunks.map((entry) =>
-			entry.chunk.id === chunkId
-				? { ...entry, target, fromMemory: options.fromMemory }
-				: entry,
-		),
+		chunks,
 		updatedAt: options.now,
 	};
 }

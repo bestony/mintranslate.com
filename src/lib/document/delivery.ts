@@ -12,6 +12,9 @@ import { buildComparisonText } from "./result";
 export function replacementsFromTask(
 	record: DocumentTaskRecord,
 ): readonly ChunkReplacement[] {
+	const targetById = new Map(
+		record.chunks.map((entry) => [entry.chunk.id, entry.target] as const),
+	);
 	const groups = new Map<string, TextChunk[]>();
 	for (const entry of record.chunks) {
 		const part = entry.chunk.location.part;
@@ -27,10 +30,7 @@ export function replacementsFromTask(
 		const ordered = [...chunks].sort(
 			(left, right) => left.location.segment - right.location.segment,
 		);
-		const translated = ordered.map(
-			(chunk) =>
-				record.chunks.find((entry) => entry.chunk.id === chunk.id)?.target,
-		);
+		const translated = ordered.map((chunk) => targetById.get(chunk.id));
 		if (translated.some((target) => target === undefined)) continue;
 		const first = ordered[0];
 		if (first === undefined) continue;
@@ -47,6 +47,9 @@ export function pdfComparisonText(
 	extraction: PdfExtraction,
 	record: DocumentTaskRecord,
 ): string {
+	const targetById = new Map(
+		record.chunks.map((entry) => [entry.chunk.id, entry.target] as const),
+	);
 	const byPageParagraph = new Map<string, TextChunk[]>();
 	for (const entry of record.chunks) {
 		const page = entry.chunk.location.page;
@@ -65,11 +68,7 @@ export function pdfComparisonText(
 					...(byPageParagraph.get(`${page.page}:${paragraph}`) ?? []),
 				].sort((left, right) => left.location.segment - right.location.segment);
 				const target = chunks
-					.map(
-						(chunk) =>
-							record.chunks.find((entry) => entry.chunk.id === chunk.id)
-								?.target ?? "",
-					)
+					.map((chunk) => targetById.get(chunk.id) ?? "")
 					.join("");
 				return [source, target] as const;
 			}),
