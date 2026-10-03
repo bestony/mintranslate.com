@@ -19,6 +19,7 @@
  */
 
 import { createLatestCall } from "../call-control/latest-call";
+import { logger } from "../logger";
 import { selectVoice, utteranceLang } from "./voice";
 
 /** The narrow slice of the Web Speech API this module needs. */
@@ -120,11 +121,15 @@ export function createSpeechController(
 		latest.cancel();
 		engine.cancel();
 		callbacks.onStateChange(false);
+		logger.debug("speech.play.stopped");
 	}
 
 	return {
 		async speak(text, options) {
-			if (!engine.isAvailable()) return;
+			if (!engine.isAvailable()) {
+				logger.warn("speech.play.unavailable");
+				return;
+			}
 
 			const segments = segment(text);
 			if (segments.length === 0) return;
@@ -135,26 +140,45 @@ export function createSpeechController(
 			engine.cancel();
 			callbacks.onStateChange(true);
 
-			const outcome = await latest.run(async (signal) => {
-				for (const piece of segments) {
-					// Superseded or stopped: do not read the rest of the queue.
-					if (own !== generation || signal.aborted) return;
-
-					// Re-read on each segment: a late-arriving voice list applies to the
-					// remainder of this read too.
-					const voice = selectVoice(knownVoices, options.language);
-					await engine.speak(piece, {
-						rate: options.rate,
-						lang: utteranceLangFor(options.language),
-						...(voice !== undefined && { voiceName: voice.name }),
-					});
-				}
+			logger.info("speech.play.start", {
+				language: options.language,
+				rate: options.rate,
+				segmentCount: segments.length,
+				textLength: text.length,
 			});
 
-			// Only the current request may clear the speaking state; a superseded
-			// one would otherwise report "stopped" while the new one is talking.
-			if (outcome.kind !== "superseded" && own === generation) {
+			try {
+				const outcome = await latest.run(async (signal) => {
+					for (const piece of segments) {
+						// Superseded or stopped: do not read the rest of the queue.
+						if (own !== generation || signal.aborted) return;
+
+						// Re-read on each segment: a late-arriving voice list applies to the
+						// remainder of this read too.
+						const voice = selectVoice(knownVoices, options.language);
+						await engine.speak(piece, {
+							rate: options.rate,
+							lang: utteranceLangFor(options.language),
+							...(voice !== undefined && { voiceName: voice.name }),
+						});
+					}
+				});
+
+				// Only the current request may clear the speaking state; a superseded
+				// one would otherwise report "stopped" while the new one is talking.
+				if (outcome.kind !== "superseded" && own === generation) {
+					callbacks.onStateChange(false);
+					logger.info("speech.play.completed", {
+						language: options.language,
+					});
+				}
+			} catch (error) {
 				callbacks.onStateChange(false);
+				logger.warn("speech.play.error", {
+					error: error instanceof Error ? error.message : String(error),
+				});
+				callbacks.onError?.(error);
+				throw error;
 			}
 		},
 
