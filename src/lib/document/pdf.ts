@@ -7,8 +7,9 @@
  * not need a browser Worker or a real PDF fixture.
  */
 
-import type { TextChunk } from "./model";
+import { withBase } from "../base-path";
 import { chunkParagraph } from "./chunk";
+import type { TextChunk } from "./model";
 
 export interface PdfTextItem {
 	readonly str?: string;
@@ -62,9 +63,15 @@ async function loadLocalPdfDocument(
 	const loadingTask = pdfjs.getDocument({
 		data: bytes,
 		worker: pdfWorker,
-		// Text extraction does not need built-in font or CMap fetches. Keeping these
-		// disabled also makes accidental network access impossible during parsing.
-		useWorkerFetch: false,
+		cMapUrl: new URL(
+			withBase("pdfjs/cmaps/"),
+			globalThis.location.origin,
+		).toString(),
+		cMapPacked: true,
+		useSystemFonts: true,
+		// The worker fetches same-origin CMaps directly. This keeps the resource
+		// request in the PDF worker and avoids any browser-specific Response helper.
+		useWorkerFetch: true,
 		isOffscreenCanvasSupported: false,
 	});
 

@@ -9,13 +9,9 @@
  */
 
 import { chunkDocument } from "./chunk";
-import { extractPdfText, type PdfExtraction } from "./pdf";
-import {
-	parseOoxml,
-	rebuildOoxml,
-	type ChunkReplacement,
-} from "./ooxml";
 import type { DocumentFormat, ParsedDocument, TextChunk } from "./model";
+import { type ChunkReplacement, parseOoxml, rebuildOoxml } from "./ooxml";
+import { extractPdfText, type PdfExtraction } from "./pdf";
 
 export type DocumentJob =
 	| {

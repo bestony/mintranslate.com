@@ -1,6 +1,6 @@
 /** Worker entry for local document parsing and rebuilding. */
 
-import { processDocumentJob, type DocumentJob } from "./processor";
+import { type DocumentJob, processDocumentJob } from "./processor";
 
 export interface DocumentWorkerRequest {
 	readonly id: number;

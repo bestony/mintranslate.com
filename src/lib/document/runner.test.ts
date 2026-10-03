@@ -5,11 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import { logger } from "../logger";
 import { type DocumentJob, processDocumentJob } from "./processor";
 import { type DocumentWorkerLike, runDocumentJob } from "./runner";
+import type { DocumentWorkerRequest, DocumentWorkerResponse } from "./worker";
 import { writePackage } from "./zip";
-import type {
-	DocumentWorkerRequest,
-	DocumentWorkerResponse,
-} from "./worker";
 
 const job: DocumentJob = {
 	kind: "parse",
@@ -21,7 +18,7 @@ const job: DocumentJob = {
 	}),
 };
 
-class FakeWorker implements DocumentWorkerLike {
+class FakeWorker {
 	private readonly listeners = new Map<
 		"message" | "error",
 		((event: { data?: DocumentWorkerResponse; message?: string }) => void)[]
@@ -36,14 +33,6 @@ class FakeWorker implements DocumentWorkerLike {
 	}
 
 	addEventListener(
-		type: "message",
-		listener: (event: { data: DocumentWorkerResponse }) => void,
-	): void;
-	addEventListener(
-		type: "error",
-		listener: (event: { error?: unknown; message?: string }) => void,
-	): void;
-	addEventListener(
 		type: "message" | "error",
 		listener: (event: {
 			data?: DocumentWorkerResponse;
@@ -55,7 +44,8 @@ class FakeWorker implements DocumentWorkerLike {
 	}
 
 	emitError(message: string): void {
-		for (const listener of this.listeners.get("error") ?? []) listener({ message });
+		for (const listener of this.listeners.get("error") ?? [])
+			listener({ message });
 	}
 
 	terminate(): void {
@@ -68,7 +58,7 @@ describe("document Worker runner", () => {
 		const worker = new FakeWorker();
 		const workerResult = await runDocumentJob(job, {
 			canUseWorker: () => true,
-			createWorker: () => worker,
+			createWorker: () => worker as unknown as DocumentWorkerLike,
 		});
 		const fallbackResult = await runDocumentJob(job, {
 			canUseWorker: () => false,
@@ -82,9 +72,9 @@ describe("document Worker runner", () => {
 		const warning = vi.spyOn(logger, "warn");
 		await runDocumentJob(job, { canUseWorker: () => false });
 		expect(warning).toHaveBeenCalledWith(
-		"document.worker.unavailable",
-		expect.objectContaining({ path: "main-thread" }),
-	);
+			"document.worker.unavailable",
+			expect.objectContaining({ path: "main-thread" }),
+		);
 		warning.mockRestore();
 	});
 
@@ -100,9 +90,9 @@ describe("document Worker runner", () => {
 		worker.postMessage = () => worker.emitError("worker failed");
 		const result = await runDocumentJob(job, {
 			canUseWorker: () => true,
-			createWorker: () => worker,
+			createWorker: () => worker as unknown as DocumentWorkerLike,
 		});
-		 expect(result.kind).toBe("parsed");
-		 expect(worker.terminated).toBe(true);
+		expect(result.kind).toBe("parsed");
+		expect(worker.terminated).toBe(true);
 	});
 });

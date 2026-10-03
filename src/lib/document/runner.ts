@@ -8,14 +8,11 @@
 
 import { logger } from "../logger";
 import {
-	processDocumentJob,
 	type DocumentJob,
 	type DocumentJobResult,
+	processDocumentJob,
 } from "./processor";
-import type {
-	DocumentWorkerRequest,
-	DocumentWorkerResponse,
-} from "./worker";
+import type { DocumentWorkerRequest, DocumentWorkerResponse } from "./worker";
 
 export interface DocumentWorkerLike {
 	postMessage(message: DocumentWorkerRequest, transfer?: Transferable[]): void;
@@ -61,7 +58,8 @@ export async function runDocumentJob(
 
 	if (!canUseWorker()) {
 		logger.warn("document.worker.unavailable", {
-			reason: typeof globalThis.Worker !== "function" ? "no Worker" : "disabled",
+			reason:
+				typeof globalThis.Worker !== "function" ? "no Worker" : "disabled",
 			path: "main-thread",
 		});
 		return runOnMainThread(job);

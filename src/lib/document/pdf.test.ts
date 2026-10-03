@@ -20,10 +20,7 @@ describe("PDF text extraction", () => {
 		const result = await extractPdfText(new Uint8Array([1]), {
 			loadDocument: async () =>
 				fakeDocument([
-					[
-						{ str: "第一页", hasEOL: true },
-						{ str: "第一段" },
-					],
+					[{ str: "第一页", hasEOL: true }, { str: "第一段" }],
 					[],
 					[{ str: "第三页" }],
 				]),
@@ -51,10 +48,13 @@ describe("PDF text extraction", () => {
 
 	it("creates one-based page locations for translated chunks", async () => {
 		const result = await extractPdfText(new Uint8Array([1]), {
-			loadDocument: async () => fakeDocument([[{ str: "Page one" }], [{ str: "Page two" }]]),
+			loadDocument: async () =>
+				fakeDocument([[{ str: "Page one" }], [{ str: "Page two" }]]),
 		});
 
-		expect(chunksFromPdfExtraction(result).map((chunk) => chunk.location)).toEqual([
+		expect(
+			chunksFromPdfExtraction(result).map((chunk) => chunk.location),
+		).toEqual([
 			{ page: 1, paragraph: 0, segment: 0 },
 			{ page: 2, paragraph: 0, segment: 0 },
 		]);
