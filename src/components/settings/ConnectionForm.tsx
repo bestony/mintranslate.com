@@ -13,6 +13,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createAnalytics } from "#/lib/analytics/track";
+import { createBuiltinTranslatorClient } from "#/lib/builtin-ai/translator";
 import { describeWait } from "#/lib/call-control/backoff";
 import { intranetHint } from "#/lib/connections/intranet-hint";
 import type {
@@ -126,6 +127,14 @@ export function ConnectionForm({
 		[],
 	);
 	const [testing, setTesting] = useState(false);
+	const [activatingBuiltin, setActivatingBuiltin] = useState(false);
+	const [builtinProgress, setBuiltinProgress] = useState<number | undefined>(
+		undefined,
+	);
+	const [builtinError, setBuiltinError] = useState<string | undefined>(
+		undefined,
+	);
+	const builtinTranslator = useMemo(() => createBuiltinTranslatorClient(), []);
 	const [result, setResult] = useState<
 		| { ok: true; latencyMs: number }
 		| { ok: false; text: string; checklist?: readonly string[] }
@@ -203,6 +212,28 @@ export function ConnectionForm({
 		}
 	}
 
+	async function activateBuiltinTranslator() {
+		setActivatingBuiltin(true);
+		setBuiltinError(undefined);
+		setBuiltinProgress(0);
+		try {
+			// The browser requires a user gesture for a downloadable model. The
+			// concrete pair is rechecked when the next translation request runs.
+			await builtinTranslator.create("en", "zh-Hans", {
+				onProgress: setBuiltinProgress,
+			});
+			onTested("ok");
+			setBuiltinProgress(1);
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "内置模型下载失败。";
+			setBuiltinError(message);
+			onTested("failed", `下载失败：${message} 请点击重试。`);
+		} finally {
+			setActivatingBuiltin(false);
+		}
+	}
+
 	return (
 		<div className="island-shell rounded-md p-6">
 			<div className="flex flex-wrap items-center gap-4">
@@ -232,6 +263,28 @@ export function ConnectionForm({
 							? "仅支持文本；不应用术语表与翻译风格。图片任务请切换到内置多模态或外部视觉连接。"
 							: "支持文本与图片；可应用术语表与翻译风格。Prompt API 仅支持英语、日语、西班牙语、德语和法语。"}
 					</p>
+					{connection.provider === "builtin-translator" &&
+						connection.status === "failed" &&
+						connection.statusDetail?.includes("下载") && (
+							<div className="mt-4 flex flex-wrap items-center gap-4">
+								<button
+									type="button"
+									className="min-h-11 rounded-md border border-border px-4 text-sm disabled:opacity-50"
+									disabled={activatingBuiltin}
+									onClick={activateBuiltinTranslator}
+								>
+									{activatingBuiltin ? "下载中…" : "下载并启用内置翻译"}
+								</button>
+								{builtinProgress !== undefined && (
+									<span className="text-muted-foreground text-xs">
+										进度 {Math.round(builtinProgress * 100)}%
+									</span>
+								)}
+							</div>
+						)}
+					{builtinError && (
+						<p className="mt-2 text-muted-foreground text-xs">{builtinError}</p>
+					)}
 				</div>
 			)}
 

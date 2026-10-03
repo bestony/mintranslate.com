@@ -17,6 +17,7 @@
  *   one's result is never written back.
  */
 
+import type { BuiltinDetectedLanguage } from "../builtin-ai/translator";
 import { debounce } from "../call-control/debounce";
 import { createLatestCall } from "../call-control/latest-call";
 import { throttle } from "../call-control/throttle";
@@ -69,6 +70,8 @@ export interface TranslationRunResult {
 	readonly text: string;
 	/** Metadata collected while preparing the request. */
 	readonly glossaryMatches?: readonly TranslationGlossaryMatch[];
+	/** Browser-local source detection, when the active channel performed it. */
+	readonly detectedLang?: BuiltinDetectedLanguage;
 }
 
 /** Structural glossary data kept here to avoid coupling the controller to UI code. */
@@ -92,6 +95,7 @@ export interface TranslationResultMetadata {
 	readonly memoryHit: boolean;
 	readonly memoryReferences: readonly SimilarMemoryResult[];
 	readonly glossaryMatches: readonly TranslationGlossaryMatch[];
+	readonly detectedLang?: BuiltinDetectedLanguage;
 }
 
 /** Runs one translation. Injected so the controller stays free of provider code. */
@@ -444,6 +448,9 @@ export function createTranslationController(
 					memoryHit,
 					memoryReferences,
 					glossaryMatches: result.glossaryMatches ?? [],
+					...(result.detectedLang !== undefined && {
+						detectedLang: result.detectedLang,
+					}),
 				});
 
 				if (

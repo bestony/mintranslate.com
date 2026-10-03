@@ -21,6 +21,7 @@ import {
 	createThrottledSubmit,
 	reportedHost,
 } from "#/lib/analytics/track";
+import { createBuiltinTranslatorClient } from "#/lib/builtin-ai/translator";
 import { createKeyedLimiters } from "#/lib/call-control/concurrency";
 import {
 	attributeFailure,
@@ -317,6 +318,9 @@ export function TranslationWorkspace() {
 		[analytics],
 	);
 
+	/** One main-thread browser translator client shared by calls and activation UI. */
+	const builtinTranslator = useMemo(() => createBuiltinTranslatorClient(), []);
+
 	/**
 	 * Report a language change.
 	 *
@@ -345,8 +349,12 @@ export function TranslationWorkspace() {
 
 	/** Single caller instance: it owns the per-connection limits and flights. */
 	const caller = useMemo(
-		() => createModelCaller({ limiterFor: (id) => limiters.for(id) }),
-		[],
+		() =>
+			createModelCaller({
+				limiterFor: (id) => limiters.for(id),
+				builtinTranslator,
+			}),
+		[builtinTranslator],
 	);
 
 	// Pick up the style chosen in settings. Read once: the workspace does not own
@@ -545,10 +553,9 @@ export function TranslationWorkspace() {
 							detectedInput?.sourceLang === AUTO_DETECT &&
 							detectedRef.current === undefined
 						) {
-							// The current model contract returns translated text only. Keep the
-							// existing fallback until a structured detection field is available.
 							const detectedLanguage =
-								detectedInput.targetLang === "en" ? "zh-Hans" : "en";
+								metadata?.detectedLang?.code ??
+								(detectedInput.targetLang === "en" ? "zh-Hans" : "en");
 							detectedRef.current = detectedLanguage;
 							setDetected(detectedLanguage);
 						}
@@ -698,6 +705,9 @@ export function TranslationWorkspace() {
 						requirement: "text",
 						systemInstruction: prompt.systemInstruction,
 						userContent: prompt.userContent,
+						rawText: input.text,
+						sourceLanguage: input.sourceLang,
+						targetLanguage: input.targetLang,
 						onChunk,
 					});
 
@@ -726,7 +736,13 @@ export function TranslationWorkspace() {
 						requestId,
 						signal: signal.aborted,
 					});
-					return { text: outcome.text, glossaryMatches };
+					return {
+						text: outcome.text,
+						glossaryMatches,
+						...(outcome.metadata?.detectedLang !== undefined && {
+							detectedLang: outcome.metadata.detectedLang,
+						}),
+					};
 				},
 			}),
 		[caller],
