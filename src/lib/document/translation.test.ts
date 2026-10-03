@@ -210,6 +210,37 @@ describe("document translation orchestration", () => {
 		expect(calls).toEqual(["fails"]);
 	});
 
+	it("stops queued default-transport calls before releasing a failed slot", async () => {
+		const record = recordWithTexts(["fails", "queued", "also queued"]);
+		const limiters = createKeyedLimiters(1);
+		const originalFetch = globalThis.fetch;
+		const requestBodies: string[] = [];
+		globalThis.fetch = (async (_input, init) => {
+			requestBodies.push(typeof init?.body === "string" ? init.body : "");
+			throw new Error("default transport failure");
+		}) as typeof fetch;
+
+		try {
+			const result = await translateDocument(
+				{
+					record,
+					connection: { ...connection, endpoint: "https://model.test/v1" },
+					apiKey: "key",
+				},
+				{
+					limiterFor: limiters.for,
+					glossaryMatcher: async () => [],
+				},
+			);
+
+			expect(result.kind).toBe("failed");
+			expect(requestBodies.length).toBeGreaterThan(0);
+			expect(new Set(requestBodies)).toHaveLength(1);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
 	it("resumes only unfinished chunks", async () => {
 		const base = recordWithTexts(["already done", "needs work"]);
 		const record: DocumentTaskRecord = {
