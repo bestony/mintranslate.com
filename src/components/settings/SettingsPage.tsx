@@ -12,10 +12,13 @@ import { useAnalytics } from "#/lib/analytics/use-analytics";
 import {
 	defaultConnectionName,
 	type ModelTier,
-	PROVIDER_IDS,
 	type ProviderId,
 } from "#/lib/connections/model";
-import { presetDefaults, presetFor } from "#/lib/connections/presets";
+import {
+	CONFIGURABLE_PROVIDER_IDS,
+	presetDefaults,
+	presetFor,
+} from "#/lib/connections/presets";
 import { exportConfiguration } from "#/lib/connections/storage";
 import { useConnectionStore } from "#/lib/connections/store";
 import {
@@ -329,7 +332,7 @@ export function SettingsPage() {
 						}}
 					>
 						<option value="">+ 新增连接…</option>
-						{PROVIDER_IDS.map((id) => (
+						{CONFIGURABLE_PROVIDER_IDS.map((id) => (
 							<option key={id} value={id}>
 								{presetFor(id)?.label ?? id}
 							</option>

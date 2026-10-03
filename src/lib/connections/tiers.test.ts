@@ -21,6 +21,16 @@ function connection(
 }
 
 describe("resolveTier — availability", () => {
+	it("accepts ready built-in connections with empty endpoint and model", () => {
+		const builtin = connection({
+			id: "builtin-translator",
+			provider: "builtin-translator",
+			endpoint: "",
+			model: "",
+		});
+		const result = resolveTier("fast", [builtin]);
+		expect(result.kind).toBe("resolved");
+	});
 	it("reports unavailable when nothing is configured", () => {
 		const result = resolveTier("advanced", []);
 		expect(result.kind).toBe("unavailable");
@@ -137,6 +147,17 @@ describe("resolveTier — derivation when unassigned", () => {
 });
 
 describe("describeTierTarget", () => {
+	it("labels a built-in target as a built-in channel", () => {
+		const builtin = connection({
+			id: "builtin-multimodal",
+			provider: "builtin-multimodal",
+			name: "内置多模态（文本与图片）",
+			endpoint: "",
+			model: "",
+			capabilities: { text: true, vision: true },
+		});
+		expect(describeTierTarget("advanced", [builtin])).toContain("内置通道");
+	});
 	it("names the connection and model so the tier is not a black box", () => {
 		const chosen = connection({
 			id: "a",

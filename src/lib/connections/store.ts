@@ -12,15 +12,26 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-
+import {
+	type BuiltinApiScope,
+	type BuiltinCapabilityDetection,
+	type BuiltinReadiness,
+	deriveBuiltinConnectionStatus,
+	detectBuiltinCapabilities,
+	queryLanguageModelAvailability,
+	queryTranslatorAvailability,
+} from "../builtin-ai/capability";
 import { logger } from "../logger";
 import {
 	activationBlocker,
 	applyEdit,
+	BUILTIN_CONNECTION_IDS,
 	type Connection,
 	type ConnectionEdit,
 	canActivate,
 	defaultConnectionName,
+	isBuiltinConnectionId,
+	isBuiltinProvider,
 	type ModelTier,
 	type ProviderId,
 } from "./model";
@@ -94,6 +105,107 @@ export interface ConnectionStore extends ConnectionStoreState {
 	noteLanguageUse(code: string): void;
 }
 
+/** Capability support used when deriving the fixed built-in connections. */
+export interface BuiltinConnectionSupport {
+	readonly translator: boolean;
+	readonly multimodal: boolean;
+}
+
+/** Optional readiness results used to show download and device details. */
+export interface BuiltinConnectionReadiness {
+	readonly translator?: BuiltinReadiness;
+	readonly multimodal?: BuiltinReadiness;
+}
+
+/** Translator requires both its translator and local detector APIs. */
+export function builtinConnectionSupport(
+	detection: BuiltinCapabilityDetection,
+): BuiltinConnectionSupport {
+	return {
+		translator: detection.translator && detection.languageDetector,
+		multimodal: detection.languageModel,
+	};
+}
+
+const BUILTIN_CONNECTION_DEFINITIONS = {
+	"builtin-translator": {
+		name: "内置翻译（仅文本）",
+		capabilities: { text: true, vision: false },
+		kind: "translator",
+	},
+	"builtin-multimodal": {
+		name: "内置多模态（文本与图片）",
+		capabilities: { text: true, vision: true },
+		kind: "multimodal",
+	},
+} as const;
+
+/**
+ * Add supported built-in connections and remove unsupported fixed ids.
+ *
+ * The map keeps this operation linear even when a user has many BYOK
+ * connections. Existing tier assignments and timestamps are preserved.
+ */
+export function seedBuiltinConnections(
+	connections: readonly Connection[],
+	support: BuiltinConnectionSupport,
+	now = Date.now(),
+	readiness: BuiltinConnectionReadiness = {},
+): Connection[] {
+	const existing = new Map(
+		connections.map((connection) => [connection.id, connection]),
+	);
+	const next = connections.filter((connection) => {
+		return !isBuiltinConnectionId(connection.id);
+	});
+
+	for (const id of BUILTIN_CONNECTION_IDS) {
+		const kind = BUILTIN_CONNECTION_DEFINITIONS[id].kind;
+		if (!support[kind]) continue;
+
+		const definition = BUILTIN_CONNECTION_DEFINITIONS[id];
+		const current = existing.get(id);
+		const state = readiness[kind];
+		const derived = state
+			? deriveBuiltinConnectionStatus(state)
+			: { status: "ok" as const };
+
+		next.push({
+			...(current ?? {
+				id,
+				createdAt: now,
+				updatedAt: now,
+			}),
+			name: definition.name,
+			provider: id,
+			endpoint: "",
+			model: "",
+			capabilities: definition.capabilities,
+			status: derived.status,
+			...(derived.statusDetail !== undefined && {
+				statusDetail: derived.statusDetail,
+			}),
+			...(derived.statusDetail === undefined && { statusDetail: undefined }),
+			updatedAt:
+				current?.status === derived.status &&
+				current?.statusDetail === derived.statusDetail
+					? current.updatedAt
+					: now,
+		});
+	}
+
+	return next;
+}
+
+/** Strip any legacy or manually inserted keys for fixed built-in ids. */
+export function stripBuiltinKeys(
+	keys: Readonly<Record<string, string>>,
+): Record<string, string> {
+	return Object.fromEntries(
+		Object.entries(keys).filter(([id]) => !isBuiltinConnectionId(id)),
+	);
+}
+
 /**
  * Load persisted state once, then keep it in React state.
  *
@@ -114,17 +226,54 @@ export function useConnectionStore(): ConnectionStore {
 	useEffect(() => {
 		const resolved = browserStore();
 		setStore(resolved);
-		if (!resolved) return;
+		const detection = detectBuiltinCapabilities();
+		const support = builtinConnectionSupport(detection);
+		if (!resolved) {
+			setConnections(seedBuiltinConnections([], support));
+			return;
+		}
 
 		const loadedConnections = loadConnections(resolved);
-		setConnections(loadedConnections.value);
+		const seeded = seedBuiltinConnections(loadedConnections.value, support);
+		setConnections(seeded);
 		setLoadWarning(loadedConnections.discarded);
-		setKeys(loadKeys(resolved));
-		setActiveId(loadActiveId(resolved));
+		setKeys(stripBuiltinKeys(loadKeys(resolved)));
+		const loadedActiveId = loadActiveId(resolved);
+		setActiveId(
+			loadedActiveId !== null && seeded.some(({ id }) => id === loadedActiveId)
+				? loadedActiveId
+				: null,
+		);
 
 		const storedTier = resolved.getItem(TIER_KEY);
 		if (storedTier === "advanced" || storedTier === "fast")
 			setTierState(storedTier);
+
+		let cancelled = false;
+		void Promise.all([
+			support.translator
+				? queryTranslatorAvailability("en", "zh", {
+						scope: globalThis as BuiltinApiScope,
+					})
+				: Promise.resolve(undefined),
+			support.multimodal
+				? queryLanguageModelAvailability("en", {
+						scope: globalThis as BuiltinApiScope,
+					})
+				: Promise.resolve(undefined),
+		]).then(([translator, multimodal]) => {
+			if (cancelled) return;
+			setConnections((current) =>
+				seedBuiltinConnections(current, support, Date.now(), {
+					...(translator !== undefined && { translator }),
+					...(multimodal !== undefined && { multimodal }),
+				}),
+			);
+		});
+
+		return () => {
+			cancelled = true;
+		};
 	}, []);
 
 	// Persist on change. Each effect writes only its own slot.
@@ -155,6 +304,10 @@ export function useConnectionStore(): ConnectionStore {
 	);
 
 	const createFromPreset = useCallback((provider: ProviderId) => {
+		if (isBuiltinProvider(provider)) {
+			logger.warn("connection.builtin_create_ignored", { provider });
+			return provider;
+		}
 		const now = Date.now();
 		const id = newId();
 		const preset = presetFor(provider);
@@ -199,6 +352,10 @@ export function useConnectionStore(): ConnectionStore {
 	}, []);
 
 	const setKey = useCallback((id: string, key: string) => {
+		if (isBuiltinConnectionId(id)) {
+			logger.warn("connection.builtin_key_ignored", { id });
+			return;
+		}
 		setKeys((current) => {
 			const next = { ...current };
 			if (key === "") delete next[id];

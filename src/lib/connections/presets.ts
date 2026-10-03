@@ -110,6 +110,10 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
 	},
 ];
 
+/** Provider ids that users may create through the settings preset picker. */
+export const CONFIGURABLE_PROVIDER_IDS: readonly ProviderId[] =
+	PROVIDER_PRESETS.map((preset) => preset.provider);
+
 /** Look up a preset by provider id. */
 export function presetFor(provider: ProviderId): ProviderPreset | undefined {
 	return PROVIDER_PRESETS.find((preset) => preset.provider === provider);
