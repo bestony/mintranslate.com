@@ -40,12 +40,13 @@ describe("resolving the URL value", () => {
 	});
 });
 
-describe("the image value is one analytics already knows", () => {
-	it("appears in the analytics mode set", () => {
-		// This is what lets an image run be attributed to images without touching the
-		// event contract.
+describe("workspace values are known to analytics", () => {
+	it.each([
+		"images",
+		"docs",
+	] as const)("includes the %s mode in the analytics mode set", (mode) => {
 		expect(ANALYTICS_MODES as readonly string[]).toContain(
-			MODE_URL_VALUES.images,
+			MODE_URL_VALUES[mode],
 		);
 	});
 });
