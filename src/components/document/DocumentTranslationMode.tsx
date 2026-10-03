@@ -41,7 +41,11 @@ import {
 } from "#/lib/translation-memory";
 import { DocumentDropZone } from "./DocumentDropZone";
 import { DocumentResultView } from "./DocumentResultView";
-import { canStartDocumentRun, shouldDisableResume } from "./task-actions";
+import {
+	canDeleteDocumentTask,
+	canStartDocumentRun,
+	shouldDisableResume,
+} from "./task-actions";
 
 interface DocumentTranslationModeProps {
 	readonly connection: Connection | undefined;
@@ -501,8 +505,7 @@ export function DocumentTranslationMode({
 											继续
 										</button>
 									)}
-									{(entry.state === "succeeded" ||
-										entry.state === "failed") && (
+									{canDeleteDocumentTask(entry, task?.id, activeTask) && (
 										<button
 											type="button"
 											className="nav-link min-h-11"
