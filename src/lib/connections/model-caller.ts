@@ -17,7 +17,11 @@
  */
 
 import { chat } from "@tanstack/ai";
-
+import {
+	type BuiltinDetectedLanguage,
+	type BuiltinTranslatorClient,
+	createBuiltinTranslatorClient,
+} from "../builtin-ai/translator";
 import type { ConcurrencyLimiter } from "../call-control/concurrency";
 import { createLatestCall } from "../call-control/latest-call";
 import { createSingleFlightWithState } from "../call-control/single-flight";
@@ -26,7 +30,7 @@ import { createAdapterForConnection } from "./adapters";
 import { type FailureAttribution, preflightMixedContent } from "./attribution";
 import { type CallRequirement, capabilityBlocker } from "./capability-guard";
 import { statusOf } from "./error-shape";
-import type { Connection } from "./model";
+import { type Connection, isBuiltinProvider } from "./model";
 
 /**
  * An image supplied to a call.
@@ -56,6 +60,11 @@ export interface ModelCallRequest {
 	 * passing a string and produces exactly the message it always did.
 	 */
 	readonly userContent: string;
+	/** Original source text, used by browser-native translators without prompts. */
+	readonly rawText?: string;
+	/** Internal language codes used by browser-native translation APIs. */
+	readonly sourceLanguage?: string;
+	readonly targetLanguage?: string;
 	/** Images to attach. Present only for multimodal calls. */
 	readonly images?: readonly ModelImageInput[];
 	/**
@@ -89,8 +98,17 @@ export type ModelCallRefusal =
 
 /** Outcome of a model call. */
 export type ModelCallOutcome =
-	| { readonly kind: "result"; readonly text: string }
+	| {
+			readonly kind: "result";
+			readonly text: string;
+			readonly metadata?: ModelCallResultMetadata;
+	  }
 	| { readonly kind: "refused"; readonly refusal: ModelCallRefusal };
+
+/** Metadata produced by a browser-native translation call. */
+export interface ModelCallResultMetadata {
+	readonly detectedLang?: BuiltinDetectedLanguage;
+}
 
 /** Call surface exposed to the rest of the application. */
 export interface ModelCaller {
@@ -105,7 +123,13 @@ export interface ModelCaller {
 export type ModelTransport = (
 	request: ModelCallRequest,
 	signal: AbortSignal,
-) => Promise<string>;
+) => Promise<string | ModelTransportResult>;
+
+/** Structured result accepted from a browser-native transport. */
+export interface ModelTransportResult {
+	readonly text: string;
+	readonly metadata?: ModelCallResultMetadata;
+}
 
 /** What the caller needs from the surrounding application. */
 export interface ModelCallerDeps {
@@ -119,16 +143,26 @@ export interface ModelCallerDeps {
 	 * tests substitute it so no request leaves the process.
 	 */
 	readonly transport?: ModelTransport;
+	/** Injectable browser-native translator; never routed through an adapter. */
+	readonly builtinTranslator?: BuiltinTranslatorClient;
 }
 
 /** Create the caller. */
 export function createModelCaller(deps: ModelCallerDeps): ModelCaller {
-	const transport = deps.transport ?? performCall;
+	const builtinTranslator =
+		deps.builtinTranslator ?? createBuiltinTranslatorClient();
+	const transport =
+		deps.transport ??
+		((request: ModelCallRequest, signal: AbortSignal) =>
+			performCall(request, signal, builtinTranslator));
 	const latestPerConnection = new Map<
 		string,
 		ReturnType<typeof createLatestCall>
 	>();
-	const singleFlight = createSingleFlightWithState<string, string>();
+	const singleFlight = createSingleFlightWithState<
+		string,
+		string | ModelTransportResult
+	>();
 
 	function latestFor(connectionId: string) {
 		const existing = latestPerConnection.get(connectionId);
@@ -209,7 +243,7 @@ export function createModelCaller(deps: ModelCallerDeps): ModelCaller {
 				const joined = await singleFlight.run(flightKey, () =>
 					transport(request, new AbortController().signal),
 				);
-				return { kind: "result", text: joined };
+				return resultFromTransport(joined);
 			}
 
 			const outcome = await latest.run(async (signal) =>
@@ -242,10 +276,13 @@ export function createModelCaller(deps: ModelCallerDeps): ModelCaller {
 				connectionId: connection.id,
 				provider: connection.provider,
 				model: connection.model,
-				resultLength: slot.value.length,
+				resultLength:
+					typeof slot.value === "string"
+						? slot.value.length
+						: slot.value.text.length,
 			});
 
-			return { kind: "result", text: slot.value };
+			return resultFromTransport(slot.value);
 		},
 
 		cancel(connectionId) {
@@ -262,9 +299,43 @@ export function createModelCaller(deps: ModelCallerDeps): ModelCaller {
 async function performCall(
 	request: ModelCallRequest,
 	signal: AbortSignal,
-): Promise<string> {
+	builtinTranslator: BuiltinTranslatorClient,
+): Promise<string | ModelTransportResult> {
 	const startedAt = Date.now();
 	try {
+		if (request.connection.provider === "builtin-translator") {
+			if (
+				request.sourceLanguage === undefined ||
+				request.targetLanguage === undefined
+			) {
+				throw new Error("内置翻译需要源语言和目标语言。");
+			}
+			const input = request.rawText ?? request.userContent;
+			const result = request.onChunk
+				? await builtinTranslator.translateStreaming(
+						request.sourceLanguage,
+						request.targetLanguage,
+						input,
+						{ signal, onChunk: request.onChunk },
+					)
+				: await builtinTranslator.translate(
+						request.sourceLanguage,
+						request.targetLanguage,
+						input,
+						{ signal },
+					);
+			return {
+				text: result.text,
+				...(result.detectedLang !== undefined && {
+					metadata: { detectedLang: result.detectedLang },
+				}),
+			};
+		}
+
+		if (isBuiltinProvider(request.connection.provider)) {
+			throw new Error("内置多模态连接的调用路径尚未接入图片/文本会话。");
+		}
+
 		const adapter = await createAdapterForConnection(
 			request.connection,
 			request.apiKey,
@@ -358,6 +429,20 @@ async function performCall(
 		}
 		throw error;
 	}
+}
+
+/** Normalize legacy string transports and structured built-in results. */
+function resultFromTransport(value: string | ModelTransportResult): {
+	kind: "result";
+	text: string;
+	metadata?: ModelCallResultMetadata;
+} {
+	if (typeof value === "string") return { kind: "result", text: value };
+	return {
+		kind: "result",
+		text: value.text,
+		...(value.metadata !== undefined && { metadata: value.metadata }),
+	};
 }
 
 /**

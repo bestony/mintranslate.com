@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-
+import type { BuiltinTranslatorClient } from "../builtin-ai/translator";
 import { createConcurrencyLimiter } from "../call-control/concurrency";
 import type { Connection } from "./model";
 import { createModelCaller } from "./model-caller";
@@ -27,6 +27,81 @@ function connection(
 }
 
 describe("model caller — capability refusal happens before any request", () => {
+	it("routes the built-in translator on the main thread without an adapter", async () => {
+		const translate = vi.fn().mockResolvedValue({
+			text: "你好",
+			detectedLang: { code: "en", confidence: 0.91, lowConfidence: false },
+		});
+		const builtinTranslator = {
+			availability: vi.fn(),
+			create: vi.fn(),
+			translate,
+			translateStreaming: vi.fn(),
+			detect: vi.fn(),
+			destroy: vi.fn(),
+		} as unknown as BuiltinTranslatorClient;
+		const caller = createModelCaller({
+			limiterFor: () => createConcurrencyLimiter(),
+			builtinTranslator,
+		});
+
+		const outcome = await caller.call({
+			connection: connection({
+				id: "builtin",
+				provider: "builtin-translator",
+				endpoint: "",
+				model: "",
+			}),
+			apiKey: "",
+			requirement: "text",
+			sourceLanguage: "en",
+			targetLanguage: "zh-Hans",
+			rawText: "hello",
+			userContent: "prompt should not be translated",
+		});
+
+		expect(outcome).toEqual({
+			kind: "result",
+			text: "你好",
+			metadata: {
+				detectedLang: { code: "en", confidence: 0.91, lowConfidence: false },
+			},
+		});
+		expect(translate).toHaveBeenCalledWith("en", "zh-Hans", "hello", {
+			signal: expect.any(AbortSignal),
+		});
+	});
+
+	it("keeps capability refusal ahead of the built-in translator", async () => {
+		const translate = vi.fn();
+		const caller = createModelCaller({
+			limiterFor: () => createConcurrencyLimiter(),
+			builtinTranslator: {
+				availability: vi.fn(),
+				create: vi.fn(),
+				translate,
+				translateStreaming: vi.fn(),
+				detect: vi.fn(),
+				destroy: vi.fn(),
+			} as unknown as BuiltinTranslatorClient,
+		});
+
+		const outcome = await caller.call({
+			connection: connection({
+				id: "builtin",
+				provider: "builtin-translator",
+				endpoint: "",
+				model: "",
+				capabilities: { text: true, vision: false },
+			}),
+			apiKey: "",
+			requirement: "vision",
+			userContent: "image",
+		});
+		expect(outcome.kind).toBe("refused");
+		expect(translate).not.toHaveBeenCalled();
+	});
+
 	it("refuses a vision call on a text-only connection", async () => {
 		const limiter = createConcurrencyLimiter();
 		const runSpy = vi.spyOn(limiter, "run");
