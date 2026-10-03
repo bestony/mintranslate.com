@@ -15,11 +15,13 @@ import { describe, expect, it } from "vitest";
 import type { DocumentTaskRecord, TranslatedChunk } from "./model";
 import {
 	applyChunkResult,
+	beginProcessing,
 	canTransition,
 	needsSource,
 	pendingChunks,
 	progressOf,
 	readyToSucceed,
+	resetResultsForContext,
 	resultsAreReusable,
 	transition,
 	wasCancelled,
@@ -57,6 +59,22 @@ function record(
 }
 
 describe("transitions", () => {
+	it("starts queued work and resumes failed work", () => {
+		const queued = beginProcessing(record(), 2000);
+		expect(queued.ok).toBe(true);
+		if (queued.ok) expect(queued.record.state).toBe("processing");
+
+		const failed = beginProcessing(
+			record({ state: "failed", failureKind: "cancelled" }),
+			3000,
+		);
+		expect(failed.ok).toBe(true);
+		if (failed.ok) {
+			expect(failed.record.state).toBe("processing");
+			expect(failed.record.failureKind).toBeUndefined();
+		}
+	});
+
 	it("allows the documented paths", () => {
 		expect(canTransition("queued", "processing")).toBe(true);
 		expect(canTransition("processing", "succeeded")).toBe(true);
@@ -179,6 +197,30 @@ describe("context changes invalidate stored results", () => {
 				styleId: "literal",
 			}),
 		).toBe(false);
+	});
+
+	it("clears old results and queues a changed context", () => {
+		const changed = resetResultsForContext(
+			record({
+				state: "failed",
+				failureKind: "error",
+				failureDetail: "temporary failure",
+				chunks: chunks(2),
+			}),
+			{
+				sourceLang: "en",
+				targetLang: "ja",
+				styleId: "literal",
+			},
+			3000,
+		);
+		expect(changed.state).toBe("queued");
+		expect(changed.targetLang).toBe("ja");
+		expect(changed.updatedAt).toBe(3000);
+		expect(changed.failureKind).toBeUndefined();
+		expect(changed.chunks.every((entry) => entry.target === undefined)).toBe(
+			true,
+		);
 	});
 });
 

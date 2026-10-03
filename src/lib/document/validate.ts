@@ -134,3 +134,10 @@ export const TASK_THRESHOLDS = {
 	pages: TASK_PAGE_THRESHOLD,
 	bytes: TASK_BYTE_THRESHOLD,
 } as const;
+
+/** User-facing explanation shown whenever document processing is started. */
+export function taskThresholdNotice(): string {
+	return `超过 ${TASK_PAGE_THRESHOLD} 页或 ${describeBytes(
+		TASK_BYTE_THRESHOLD,
+	)} 的文档会转为可续传任务；较小文档同样显示进度并支持取消。`;
+}

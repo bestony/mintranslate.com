@@ -20,6 +20,33 @@ import {
 	type TranslatedChunk,
 } from "./model";
 
+/** Explicitly start a queued task or resume a failed task. */
+export function beginProcessing(
+	record: DocumentTaskRecord,
+	now: number,
+): TransitionResult {
+	if (record.state === "queued") {
+		return transition(record, "processing", { now });
+	}
+	if (record.state === "failed") {
+		return {
+			ok: true,
+			record: {
+				...record,
+				state: "processing",
+				failureKind: undefined,
+				failureDetail: undefined,
+				updatedAt: now,
+			},
+		};
+	}
+	if (record.state === "processing") return { ok: true, record };
+	return {
+		ok: false,
+		reason: `任务已处于终态「${record.state}」，需要新建任务才能重新处理`,
+	};
+}
+
 /** Transitions that are allowed. Anything else is rejected rather than applied. */
 const ALLOWED: Record<TaskState, readonly TaskState[]> = {
 	// A queued task starts, or is cancelled before it starts.
@@ -117,6 +144,30 @@ export function resultsAreReusable(
 		record.targetLang === requested.targetLang &&
 		record.styleId === requested.styleId
 	);
+}
+
+/** Reset stored results when the requested translation context changes. */
+export function resetResultsForContext(
+	record: DocumentTaskRecord,
+	requested: {
+		readonly sourceLang: string;
+		readonly targetLang: string;
+		readonly styleId: string;
+	},
+	now: number,
+): DocumentTaskRecord {
+	if (resultsAreReusable(record, requested)) return record;
+	return {
+		...record,
+		sourceLang: requested.sourceLang,
+		targetLang: requested.targetLang,
+		styleId: requested.styleId,
+		state: "queued",
+		failureKind: undefined,
+		failureDetail: undefined,
+		chunks: record.chunks.map(({ chunk }) => ({ chunk })),
+		updatedAt: now,
+	};
 }
 
 /** Whether every chunk has a result, so the task can be marked successful. */

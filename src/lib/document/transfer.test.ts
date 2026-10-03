@@ -24,6 +24,7 @@ import {
 } from "./result";
 import {
 	describeBytes,
+	taskThresholdNotice,
 	taskTrigger,
 	unparsableReason,
 	validateDocument,
@@ -221,6 +222,12 @@ describe("task thresholds", () => {
 				pageCount: TASK_PAGE_THRESHOLD + 5,
 			}),
 		).toBe("pages");
+	});
+
+	it("explains both task thresholds to users", () => {
+		const notice = taskThresholdNotice();
+		expect(notice).toContain("50");
+		expect(notice).toContain("2.0 MB");
 	});
 });
 
