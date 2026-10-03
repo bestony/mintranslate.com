@@ -24,8 +24,8 @@ import { retryAfterOf, statusOf } from "../connections/error-shape";
 import type { Connection } from "../connections/model";
 import {
 	createModelCaller,
-	type ModelCallRequest,
 	type ModelCaller,
+	type ModelCallRequest,
 	type ModelTransport,
 } from "../connections/model-caller";
 import {
