@@ -221,7 +221,9 @@ export function ConnectionForm({
 				<span className="text-muted-foreground text-xs">
 					状态：
 					{connection.status === "ok"
-						? "已通过测试"
+						? builtin
+							? "浏览器支持"
+							: "已通过测试"
 						: connection.status === "testing"
 							? "测试中"
 							: connection.status === "failed"

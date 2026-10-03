@@ -143,4 +143,30 @@ describe("built-in workspace download activation", () => {
 		expect(translator.create).toHaveBeenCalledTimes(3);
 		expect(continued).toBe(2);
 	});
+
+	it("returns false for a stale download intent so the caller shows its failure", async () => {
+		const translator = fakeTranslator();
+		await act(async () => {
+			root = createRoot(container);
+			root.render(<Harness translator={translator} />);
+		});
+
+		const required = new BuiltinTranslatorNotReadyError(
+			{ state: "downloadable" },
+			{ sourceLanguage: "ja", targetLanguage: "en" },
+		);
+		let continued = 0;
+		let accepted = true;
+		await act(async () => {
+			accepted =
+				controls?.offer(required, "stale-intent", () => {
+					continued += 1;
+				}) ?? false;
+		});
+
+		expect(accepted).toBe(false);
+		expect(continued).toBe(0);
+		expect(container.querySelector("[data-state=idle]")).not.toBeNull();
+		expect(container.querySelector("[data-state=required]")).toBeNull();
+	});
 });

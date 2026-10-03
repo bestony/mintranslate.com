@@ -119,6 +119,7 @@ describe("intranet guidance in the form", () => {
 		});
 
 		expect(textHtml).toContain("仅支持文本");
+		expect(textHtml).toContain("浏览器支持");
 		expect(textHtml).toContain("不应用术语表与翻译风格");
 		expect(textHtml).not.toContain('id="connection-endpoint"');
 		expect(textHtml).not.toContain("测试连接");

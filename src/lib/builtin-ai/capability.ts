@@ -6,7 +6,7 @@
  */
 
 import type { ConnectionStatus } from "../connections/model";
-import { isPromptApiLanguage } from "./languages";
+import { isPromptApiLanguage, promptApiLanguages } from "./languages";
 
 /** Normalized values returned by the three browser APIs. */
 export const BUILTIN_AVAILABILITIES = [
@@ -115,6 +115,30 @@ export interface BuiltinLanguageModelApi {
 	): Promise<BuiltinLanguageModelSession> | BuiltinLanguageModelSession;
 }
 
+/** Prompt API modality and language options shared by readiness and creation. */
+export interface BuiltinLanguageModelOptions extends Record<string, unknown> {
+	readonly expectedInputs: readonly Record<string, unknown>[];
+	readonly expectedOutputs: readonly Record<string, unknown>[];
+}
+
+/** Build the options that describe one target-language model request. */
+export function builtinLanguageModelOptions(
+	targetLanguage?: string,
+): BuiltinLanguageModelOptions {
+	const supportedLanguages = [...promptApiLanguages()];
+	const outputLanguages =
+		targetLanguage !== undefined && isPromptApiLanguage(targetLanguage)
+			? [targetLanguage]
+			: supportedLanguages;
+	return {
+		expectedInputs: [
+			{ type: "text", languages: supportedLanguages },
+			{ type: "image" },
+		],
+		expectedOutputs: [{ type: "text", languages: outputLanguages }],
+	};
+}
+
 /** The global object shape is intentionally structural for browser and tests. */
 export interface BuiltinApiScope {
 	readonly Translator?: BuiltinTranslatorApi;
@@ -181,7 +205,7 @@ export async function queryTranslatorAvailability(
 
 /** Query Prompt API readiness for a target language. */
 export async function queryLanguageModelAvailability(
-	targetLanguage: string,
+	targetLanguage?: string,
 	options: {
 		readonly api?: BuiltinLanguageModelApi;
 		readonly scope?: BuiltinApiScope;
@@ -191,16 +215,14 @@ export async function queryLanguageModelAvailability(
 		options.api ??
 		(options.scope ?? (globalThis as BuiltinApiScope)).LanguageModel;
 	if (api === undefined) return { state: "unavailable", reason: "browser" };
-	if (!isPromptApiLanguage(targetLanguage)) {
+	if (targetLanguage !== undefined && !isPromptApiLanguage(targetLanguage)) {
 		return { state: "unavailable", reason: "language-pair" };
 	}
 
 	try {
-		const value = await api.availability({
-			language: targetLanguage,
-			expectedInputs: [{ type: "text" }, { type: "image" }],
-			expectedOutputs: [{ type: "text" }],
-		});
+		const value = await api.availability(
+			builtinLanguageModelOptions(targetLanguage),
+		);
 		const state = normalizeAvailability(value);
 		return state === "unavailable" ? { state, reason: "device" } : { state };
 	} catch {
@@ -248,18 +270,7 @@ export function deriveBuiltinConnectionStatus(
 	const normalized: BuiltinReadiness =
 		typeof readiness === "string" ? { state: readiness } : readiness;
 
-	if (normalized.state === "available") return { status: "ok" };
-
-	if (normalized.state === "downloadable") {
-		return {
-			status: "failed",
-			statusDetail: "内置模型需要下载，请点击下载并激活。",
-		};
-	}
-
-	if (normalized.state === "downloading") {
-		return { status: "failed", statusDetail: "内置模型正在下载，请稍候。" };
-	}
+	if (normalized.state !== "unavailable") return { status: "ok" };
 
 	const details: Record<BuiltinUnavailableReason, string> = {
 		browser: "当前浏览器不支持内置 AI。",

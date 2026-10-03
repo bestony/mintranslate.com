@@ -10,7 +10,10 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { BuiltinLanguageModelClient } from "../builtin-ai/language-model";
+import {
+	type BuiltinLanguageModelClient,
+	BuiltinLanguageModelNotReadyError,
+} from "../builtin-ai/language-model";
 import { createConcurrencyLimiter } from "../call-control/concurrency";
 import type { Connection } from "../connections/model";
 import { createImageTranslator } from "./controller";
@@ -322,6 +325,40 @@ describe("rate limit budget is independent of the parse budget", () => {
 });
 
 describe("failure attribution", () => {
+	it("preserves Prompt API readiness when the model needs a download", async () => {
+		const languageModel = builtinModel();
+		const readiness = { state: "downloadable" } as const;
+		(
+			languageModel.prompt as unknown as ReturnType<typeof vi.fn>
+		).mockRejectedValue(
+			new BuiltinLanguageModelNotReadyError(readiness, {
+				targetLanguage: "en",
+			}),
+		);
+
+		const outcome = await translator({
+			builtinLanguageModel: languageModel,
+		}).translate(
+			request({
+				connection: connection({
+					id: "builtin-multimodal",
+					provider: "builtin-multimodal",
+					endpoint: "",
+					model: "",
+					capabilities: { text: true, vision: true },
+				}),
+				targetLanguage: "en",
+				sourceLanguage: "ja",
+			}),
+		);
+
+		expect(outcome).toMatchObject({
+			kind: "failed",
+			builtinReadiness: readiness,
+			targetLanguage: "en",
+		});
+	});
+
 	it("attributes a non-rate-limit failure with the existing enum", async () => {
 		chatMock.mockRejectedValue(
 			Object.assign(new Error("nope"), { status: 500 }),

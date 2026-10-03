@@ -254,12 +254,7 @@ export function selectWorkspaceConnection(
 			return false;
 		if (connection.status === undefined || connection.status === "ok")
 			return true;
-		// Readiness is pair/language scoped. A failed fixed-pair probe must not hide
-		// the workspace action for the concrete pair the user is translating.
-		return (
-			connection.statusDetail?.includes("下载") === true ||
-			connection.statusDetail?.includes("语言对") === true
-		);
+		return false;
 	});
 	return activeConnection ?? builtinCandidate;
 }

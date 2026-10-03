@@ -59,7 +59,7 @@ export function useBuiltinDownload(options: {
 		(error: unknown, key: string, continueTranslation: () => void): boolean => {
 			const request = downloadRequestFromError(error);
 			if (request === undefined) return false;
-			if (key !== intentKey.current) return true;
+			if (key !== intentKey.current) return false;
 			latest.cancel();
 			const next = reduceBuiltinDownload(INITIAL_BUILTIN_DOWNLOAD_STATE, {
 				type: "required",

@@ -118,6 +118,19 @@ describe("TranslationWorkspace render stability", () => {
 		).toBe(multimodal);
 	});
 
+	it("does not select a failed built-in channel from status text", () => {
+		const failed = {
+			id: "builtin-translator",
+			provider: "builtin-translator",
+			status: "failed",
+			statusDetail: "模型需要下载",
+		} as never;
+
+		expect(
+			selectWorkspaceConnection(undefined, [failed], "text"),
+		).toBeUndefined();
+	});
+
 	let container: HTMLDivElement;
 
 	beforeEach(() => {
