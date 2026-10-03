@@ -133,10 +133,9 @@ describe("docx parsing", () => {
 				target: `[${chunk.text}]`,
 			})),
 		);
-		expect(parseOoxml(rebuilt.bytes, "docx").chunks.map((c) => c.text)).toEqual([
-			"[Outer before outer after]",
-			"[Inner text]",
-		]);
+		expect(parseOoxml(rebuilt.bytes, "docx").chunks.map((c) => c.text)).toEqual(
+			["[Outer before outer after]", "[Inner text]"],
+		);
 	});
 
 	it("records which part each chunk came from", () => {

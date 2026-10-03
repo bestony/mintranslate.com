@@ -222,13 +222,11 @@ export async function translateDocument(
 		const limiter = limiterFor(connectionId);
 		return {
 			run: (task, isLatest) =>
-				limiter.run(
-					async () => {
-						if (stopped || (isLatest !== undefined && !isLatest()))
-							throw new DocumentStoppedError();
-						return task();
-					},
-				),
+				limiter.run(async () => {
+					if (stopped || (isLatest !== undefined && !isLatest()))
+						throw new DocumentStoppedError();
+					return task();
+				}),
 			active: () => limiter.active(),
 			queued: () => limiter.queued(),
 		};
@@ -238,28 +236,28 @@ export async function translateDocument(
 		suppliedTransport === undefined
 			? undefined
 			: async (modelRequest: ModelCallRequest, callSignal: AbortSignal) => {
-				try {
-					return await suppliedTransport(modelRequest, callSignal);
-				} catch (error) {
-					const status = statusOf(error);
-					let shouldStop = !isRateLimited(status);
-					if (!shouldStop) {
-						const attemptText = modelRequest.dedupeKey?.match(/:(\d+)$/)?.[1];
-						const attemptsSoFar =
-							attemptText === undefined ? 0 : Number(attemptText);
-						const decision = decideRetry({
-							attemptsSoFar,
-							retryAfter: parseRetryAfter(retryAfterOf(error)),
-							...(deps.maxRateLimitRetries !== undefined && {
-								policy: { maxRetries: deps.maxRateLimitRetries },
-							}),
-						});
-						shouldStop = decision.kind !== "retry";
+					try {
+						return await suppliedTransport(modelRequest, callSignal);
+					} catch (error) {
+						const status = statusOf(error);
+						let shouldStop = !isRateLimited(status);
+						if (!shouldStop) {
+							const attemptText = modelRequest.dedupeKey?.match(/:(\d+)$/)?.[1];
+							const attemptsSoFar =
+								attemptText === undefined ? 0 : Number(attemptText);
+							const decision = decideRetry({
+								attemptsSoFar,
+								retryAfter: parseRetryAfter(retryAfterOf(error)),
+								...(deps.maxRateLimitRetries !== undefined && {
+									policy: { maxRetries: deps.maxRateLimitRetries },
+								}),
+							});
+							shouldStop = decision.kind !== "retry";
+						}
+						if (shouldStop) stopped = true;
+						throw error;
 					}
-					if (shouldStop) stopped = true;
-					throw error;
-				}
-			};
+				};
 	const sleep =
 		deps.sleep ??
 		((milliseconds: number) =>

@@ -2,8 +2,8 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { Connection } from "../connections/model";
 import { createKeyedLimiters } from "../call-control/concurrency";
+import type { Connection } from "../connections/model";
 import { logger } from "../logger";
 import type { TranslationMemoryPort } from "../translation-memory";
 import type { DocumentTaskRecord, TextChunk } from "./model";

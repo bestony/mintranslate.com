@@ -102,10 +102,7 @@ function paragraphsIn(
 	spec: FormatSpec,
 ): Paragraph[] {
 	const escaped = spec.paragraphElement.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const paragraphTags = new RegExp(
-		`<(/?)${escaped}(?:\\s[^>]*)?(\/?)>`,
-		"g",
-	);
+	const paragraphTags = new RegExp(`<(/?)${escaped}(?:\\s[^>]*)?(/?)>`, "g");
 	const allSpans = findTextSpans(xml, spec.textElement);
 	const frames: {
 		readonly order: number;
