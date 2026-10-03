@@ -30,9 +30,13 @@ describe("resolving the URL value", () => {
 	});
 
 	it("falls back to text for anything unrecognised", () => {
-		for (const value of ["", undefined, "docs", "websites", "IMAGE", "image"]) {
+		for (const value of ["", undefined, "websites", "IMAGE", "image"]) {
 			expect(modeFromUrl(value), JSON.stringify(value)).toBe("text");
 		}
+	});
+
+	it("selects document mode for the docs value", () => {
+		expect(modeFromUrl("docs")).toBe("docs");
 	});
 });
 

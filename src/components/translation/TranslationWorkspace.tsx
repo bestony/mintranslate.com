@@ -48,7 +48,12 @@ import {
 	setFavorite,
 	writeRecord,
 } from "#/lib/history/db";
-import { modeFromUrl, urlValueForMode, type WorkspaceMode } from "#/lib/image";
+import {
+	modeFromUrl,
+	urlValueForMode,
+	WORKSPACE_MODES,
+	type WorkspaceMode,
+} from "#/lib/image";
 import {
 	AUTO_DETECT,
 	canSwap,
@@ -77,6 +82,7 @@ import {
 	truncationNotice,
 } from "#/lib/translation/result";
 import { fromQueryString, writeWorkspaceUrl } from "#/lib/url-state";
+import { DocumentTranslationMode } from "../document/DocumentTranslationMode";
 import { ImageTranslationMode } from "../image/ImageTranslationMode";
 import { FeedbackPanel } from "../output/FeedbackPanel";
 import { SearchLookupButton } from "../output/SearchLookupButton";
@@ -349,6 +355,7 @@ export function TranslationWorkspace() {
 			setTargetLang(restored.targetLang);
 		}
 		if (restored.text !== undefined) setText(restored.text);
+		setMode(modeFromUrl(restored.mode));
 	}, [reportLanguageChange]);
 
 	// Mirror state into the URL. `writeWorkspaceUrl` uses replaceState only.
@@ -800,9 +807,9 @@ export function TranslationWorkspace() {
 	/** Whether the source side is on auto-detect, which is also a selected state. */
 	const sourceIsAuto = sourceLang === AUTO_DETECT;
 
-	// Image mode. Rendered as its own subtree with the same chrome, so the text-mode
-	// markup below stays byte-identical and the two modes never share state.
-	if (mode === "images") {
+	// Non-text modes are rendered as their own subtree with the same chrome, so the
+	// text-mode markup below stays byte-identical and the modes never share state.
+	if (mode === "images" || mode === "docs") {
 		return (
 			<div className="flex min-h-0 flex-1 flex-col">
 				<div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:p-6">
@@ -812,7 +819,7 @@ export function TranslationWorkspace() {
 							role="toolbar"
 							aria-label="翻译模式"
 						>
-							{(["text", "images"] as const).map((candidate) => (
+							{WORKSPACE_MODES.map((candidate) => (
 								<button
 									key={candidate}
 									type="button"
@@ -824,7 +831,11 @@ export function TranslationWorkspace() {
 									}
 									onClick={() => setMode(candidate)}
 								>
-									{candidate === "text" ? "文本翻译" : "图片翻译"}
+									{candidate === "text"
+										? "文本翻译"
+										: candidate === "images"
+											? "图片翻译"
+											: "文档翻译"}
 								</button>
 							))}
 						</div>
@@ -842,26 +853,38 @@ export function TranslationWorkspace() {
 						)}
 					</div>
 
-					<ImageTranslationMode
-						connection={active}
-						apiKey={active ? store.keyFor(active.id) : ""}
-						sourceLang={sourceLang}
-						targetLang={targetLang}
-						sourceLanguageLabel={languageByCode(sourceLang)?.nameZh}
-						targetLanguageLabel={
-							languageByCode(targetLang)?.nameZh ?? targetLang
-						}
-						styleLabel={
-							TRANSLATION_STYLES.find((entry) => entry.id === promptStyle)
-								?.label
-						}
-						styleDescription={
-							TRANSLATION_STYLES.find((entry) => entry.id === promptStyle)
-								?.description
-						}
-						customInstruction={customInstruction}
-						analytics={analytics}
-					/>
+					{mode === "images" ? (
+						<ImageTranslationMode
+							connection={active}
+							apiKey={active ? store.keyFor(active.id) : ""}
+							sourceLang={sourceLang}
+							targetLang={targetLang}
+							sourceLanguageLabel={languageByCode(sourceLang)?.nameZh}
+							targetLanguageLabel={
+								languageByCode(targetLang)?.nameZh ?? targetLang
+							}
+							styleLabel={
+								TRANSLATION_STYLES.find((entry) => entry.id === promptStyle)
+									?.label
+							}
+							styleDescription={
+								TRANSLATION_STYLES.find((entry) => entry.id === promptStyle)
+									?.description
+							}
+							customInstruction={customInstruction}
+							analytics={analytics}
+						/>
+					) : (
+						<DocumentTranslationMode
+							connection={active}
+							apiKey={active ? store.keyFor(active.id) : ""}
+							sourceLang={sourceLang}
+							targetLang={targetLang}
+							styleId={promptStyle}
+							customInstruction={customInstruction}
+							analytics={analytics}
+						/>
+					)}
 				</div>
 			</div>
 		);
@@ -886,7 +909,7 @@ export function TranslationWorkspace() {
 							role="toolbar"
 							aria-label="翻译模式"
 						>
-							{(["text", "images"] as const).map((candidate) => (
+							{WORKSPACE_MODES.map((candidate) => (
 								<button
 									key={candidate}
 									type="button"
@@ -898,7 +921,11 @@ export function TranslationWorkspace() {
 									}
 									onClick={() => setMode(candidate)}
 								>
-									{candidate === "text" ? "文本翻译" : "图片翻译"}
+									{candidate === "text"
+										? "文本翻译"
+										: candidate === "images"
+											? "图片翻译"
+											: "文档翻译"}
 								</button>
 							))}
 						</div>
