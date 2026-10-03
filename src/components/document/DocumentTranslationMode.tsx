@@ -44,6 +44,7 @@ import { DocumentResultView } from "./DocumentResultView";
 import {
 	canDeleteDocumentTask,
 	canStartDocumentRun,
+	hasResumableSource,
 	shouldDisableResume,
 } from "./task-actions";
 
@@ -104,6 +105,31 @@ function resultMime(format: DocumentFormat): string {
 	return format === "pdf" ? "text/plain;charset=utf-8" : MIME_TYPES[format];
 }
 
+const CANCEL_NOTICE =
+	"已取消，已完成的块已保留；如果原文件已清理，请重新上传。";
+
+async function sourceAvailabilityFor(
+	currentStore: DocumentTaskStore,
+	entries: readonly DocumentTaskRecord[],
+): Promise<ReadonlyMap<string, boolean>> {
+	const available = await Promise.all(
+		entries.map(async (entry) => {
+			try {
+				return [
+					entry.id,
+					(await currentStore.loadSource(entry.id)) !== undefined,
+				] as const;
+			} catch (error) {
+				logger.warn("document.ui.source-check-failed", {
+					reason: error instanceof Error ? error.message : String(error),
+				});
+				return [entry.id, false] as const;
+			}
+		}),
+	);
+	return new Map(available);
+}
+
 /** Upload, resume, translate, and deliver one document. */
 export function DocumentTranslationMode({
 	connection,
@@ -117,6 +143,9 @@ export function DocumentTranslationMode({
 	const [store, setStore] = useState<DocumentTaskStore | undefined>(undefined);
 	const storeRef = useRef<DocumentTaskStore | undefined>(undefined);
 	const [tasks, setTasks] = useState<readonly DocumentTaskRecord[]>([]);
+	const [sourceAvailability, setSourceAvailability] = useState<
+		ReadonlyMap<string, boolean>
+	>(() => new Map());
 	const [task, setTask] = useState<DocumentTaskRecord | undefined>(undefined);
 	const [format, setFormat] = useState<DocumentFormat | undefined>(undefined);
 	const [notice, setNotice] = useState<string | undefined>(undefined);
@@ -134,7 +163,12 @@ export function DocumentTranslationMode({
 			if (disposed) return;
 			storeRef.current = opened;
 			setStore(opened);
-			if (opened) setTasks(await opened.list());
+			if (opened) {
+				const listed = await opened.list();
+				if (disposed) return;
+				setTasks(listed);
+				setSourceAvailability(await sourceAvailabilityFor(opened, listed));
+			}
 		});
 		return () => {
 			disposed = true;
@@ -156,7 +190,9 @@ export function DocumentTranslationMode({
 	}, []);
 
 	const refreshTasks = useCallback(async (currentStore: DocumentTaskStore) => {
-		setTasks(await currentStore.list());
+		const listed = await currentStore.list();
+		setTasks(listed);
+		setSourceAvailability(await sourceAvailabilityFor(currentStore, listed));
 	}, []);
 
 	const deliver = useCallback(
@@ -237,7 +273,7 @@ export function DocumentTranslationMode({
 				);
 				setTask(outcome.record);
 				if (outcome.kind === "cancelled") {
-					setNotice("已取消，已完成的块已保留；可以稍后继续。");
+					setNotice(CANCEL_NOTICE);
 					return;
 				}
 				if (outcome.kind === "failed") {
@@ -264,7 +300,7 @@ export function DocumentTranslationMode({
 				await refreshTasks(currentStore);
 			} catch (error) {
 				if (controller.signal.aborted) {
-					setNotice("已取消，已完成的块已保留；可以稍后继续。");
+					setNotice(CANCEL_NOTICE);
 					return;
 				}
 				logger.warn("document.ui.failed", {
@@ -495,7 +531,10 @@ export function DocumentTranslationMode({
 									{entry.chunks.length}
 								</span>
 								<div className="flex flex-wrap gap-2">
-									{entry.state !== "succeeded" && (
+									{hasResumableSource(
+										entry,
+										sourceAvailability.get(entry.id) === true,
+									) && (
 										<button
 											type="button"
 											className="nav-link min-h-11"
@@ -505,6 +544,16 @@ export function DocumentTranslationMode({
 											继续
 										</button>
 									)}
+									{sourceAvailability.has(entry.id) &&
+										entry.state !== "succeeded" &&
+										!hasResumableSource(
+											entry,
+											sourceAvailability.get(entry.id) === true,
+										) && (
+											<span className="text-muted-foreground">
+												原文件已清理，无法续传；请重新上传。
+											</span>
+										)}
 									{canDeleteDocumentTask(entry, task?.id, activeTask) && (
 										<button
 											type="button"

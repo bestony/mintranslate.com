@@ -12,6 +12,14 @@ export function shouldDisableResume(activeTask: boolean): boolean {
 	return activeTask;
 }
 
+/** Whether a non-terminal task has a local source file that can be resumed. */
+export function hasResumableSource(
+	entry: DocumentTaskRecord,
+	sourceAvailable: boolean,
+): boolean {
+	return entry.state !== "succeeded" && sourceAvailable;
+}
+
 /** Whether a task is the run currently owned by this component instance. */
 export function isActiveDocumentRun(
 	entry: DocumentTaskRecord,

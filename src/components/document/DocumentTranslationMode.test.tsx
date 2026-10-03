@@ -6,6 +6,7 @@ import type { DocumentTaskRecord } from "#/lib/document/model";
 import {
 	canDeleteDocumentTask,
 	canStartDocumentRun,
+	hasResumableSource,
 	shouldDisableResume,
 } from "./task-actions";
 
@@ -35,5 +36,17 @@ describe("document task controls", () => {
 		expect(canDeleteDocumentTask(interrupted, undefined, false)).toBe(true);
 		expect(canDeleteDocumentTask(interrupted, "active", true)).toBe(true);
 		expect(canDeleteDocumentTask(active, "active", true)).toBe(false);
+	});
+
+	it("offers resume only when the source is still available", () => {
+		const failed = {
+			id: "failed",
+			state: "failed",
+		} as DocumentTaskRecord;
+		const succeeded = { ...failed, state: "succeeded" } as DocumentTaskRecord;
+
+		expect(hasResumableSource(failed, true)).toBe(true);
+		expect(hasResumableSource(failed, false)).toBe(false);
+		expect(hasResumableSource(succeeded, true)).toBe(false);
 	});
 });

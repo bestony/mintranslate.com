@@ -170,11 +170,15 @@ export function createDocumentTaskStore(
 
 		async dropStaleSources(keepId) {
 			const tasks = await this.list();
+			const mostRecentResumableId = tasks.find(
+				(task) => task.state === "failed",
+			)?.id;
 			for (const task of tasks) {
-				// Only a task still being worked on needs its source; a terminal task's
-				// source is dead weight of up to 20MB.
 				if (task.id === keepId) continue;
 				if (!isTerminal(task.state)) continue;
+				// Keep one source for the newest failed or cancelled task so it remains
+				// resumable. Succeeded tasks and older terminal tasks are disposable.
+				if (task.id === mostRecentResumableId) continue;
 				await this.dropSource(task.id);
 			}
 		},

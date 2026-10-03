@@ -339,4 +339,32 @@ describe("persistence", () => {
 		await store.remove("done");
 		await store.remove("active");
 	});
+
+	it("keeps the most recent failed source and drops older terminal sources", async () => {
+		const store = await openDocumentTaskStore();
+		if (!store) return;
+
+		await store.save(
+			record({ id: "failed-old", state: "failed", updatedAt: 1000 }),
+		);
+		await store.saveSource("failed-old", new Uint8Array([1]));
+		await store.save(
+			record({ id: "failed-new", state: "failed", updatedAt: 2000 }),
+		);
+		await store.saveSource("failed-new", new Uint8Array([2]));
+		await store.save(
+			record({ id: "succeeded-new", state: "succeeded", updatedAt: 3000 }),
+		);
+		await store.saveSource("succeeded-new", new Uint8Array([3]));
+
+		await store.dropStaleSources("active-run");
+
+		expect(await store.loadSource("failed-old")).toBeUndefined();
+		expect(await store.loadSource("failed-new")).toBeDefined();
+		expect(await store.loadSource("succeeded-new")).toBeUndefined();
+
+		await store.remove("failed-old");
+		await store.remove("failed-new");
+		await store.remove("succeeded-new");
+	});
 });
