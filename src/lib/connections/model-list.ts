@@ -1,3 +1,22 @@
+import { debounce } from "../call-control/debounce";
+import {
+	createLatestCall,
+	type LatestOutcome,
+} from "../call-control/latest-call";
+import { scrubSecrets } from "../credentials/redact";
+import { logger } from "../logger";
+import {
+	isFeatureAvailable,
+	requiresNetwork,
+	unavailableReason,
+} from "../pwa/offline";
+import {
+	attributeFailure,
+	type FailureAttribution,
+	preflightMixedContent,
+} from "./attribution";
+import { statusOf } from "./error-shape";
+
 /**
  * Pure helpers for discovering models from an OpenAI-compatible endpoint.
  *
@@ -179,4 +198,292 @@ export function modalitiesFromResponse(payload: unknown): boolean | undefined {
 	}
 
 	return known ? vision : undefined;
+}
+
+/** Input needed to request a model list. */
+export interface LoadModelsInput {
+	readonly endpoint: string;
+	readonly apiKey: string;
+	/** Injectable connectivity override for tests and non-browser callers. */
+	readonly online?: boolean;
+	/** Signal supplied by the latest-wins controller. */
+	readonly signal?: AbortSignal;
+}
+
+/** Minimal response surface used by the request helper and its fake transport. */
+export interface ModelListResponse {
+	readonly ok: boolean;
+	readonly status: number;
+	json(): Promise<unknown>;
+}
+
+/** Function form of a fetch-compatible transport. */
+export type ModelListTransportFunction = (
+	input: string,
+	init: RequestInit,
+) => Promise<ModelListResponse>;
+
+/** Injectable transport; the object form keeps adapters easy to test as well. */
+export type ModelListTransport =
+	| ModelListTransportFunction
+	| { readonly fetch: ModelListTransportFunction };
+
+/** A successful list or an attributed failure. */
+export type ModelListResult =
+	| {
+			readonly ok: true;
+			readonly models: readonly string[];
+			readonly vision?: boolean;
+	  }
+	| {
+			readonly ok: false;
+			readonly attribution: FailureAttribution;
+			readonly reason?: "offline";
+			/** A short, redacted diagnostic containing no response body. */
+			readonly diagnostic?: string;
+	  };
+
+/** The debounce window required for explicit model-list queries. */
+export const MODEL_LIST_DEBOUNCE_MS = 500;
+
+const defaultTransport: ModelListTransportFunction = (input, init) =>
+	globalThis.fetch(input, init);
+
+function browserOnline(): boolean {
+	return typeof navigator === "undefined" ? true : navigator.onLine !== false;
+}
+
+function offlineResult(): ModelListResult {
+	return {
+		ok: false,
+		reason: "offline",
+		attribution: {
+			type: "unknown",
+			summary:
+				unavailableReason("modelList", false) ??
+				"当前处于离线状态，无法获取模型列表。",
+		},
+	};
+}
+
+function failureResult(
+	attribution: FailureAttribution,
+	status: number | undefined,
+	error: unknown,
+	apiKey: string,
+): ModelListResult {
+	// Do not expose a response body. A redacted error name is enough to distinguish
+	// an opaque browser failure in diagnostics without leaking endpoint content.
+	const diagnostic =
+		status === undefined
+			? scrubSecrets(
+					error instanceof Error ? error.name : "RequestError",
+					apiKey.trim() === "" ? [] : [apiKey],
+				)
+			: `HTTP ${status}`;
+
+	logger.warn("model-list.failed", {
+		attribution: attribution.type,
+		...(status !== undefined && { status }),
+	});
+
+	return {
+		ok: false,
+		attribution,
+		...(diagnostic !== "" && { diagnostic }),
+	};
+}
+
+function transportFor(
+	transport: ModelListTransport,
+): ModelListTransportFunction {
+	return typeof transport === "function" ? transport : transport.fetch;
+}
+
+/**
+ * Fetch and parse one OpenAI-compatible model list.
+ *
+ * This function only performs the direct `/models` probe. Provider adapters and
+ * the translation model caller are deliberately not involved.
+ */
+export async function loadModels(
+	input: LoadModelsInput,
+	transport: ModelListTransport = defaultTransport,
+): Promise<ModelListResult> {
+	const online = input.online ?? browserOnline();
+	if (
+		requiresNetwork("modelList") &&
+		!isFeatureAvailable("modelList", online)
+	) {
+		return offlineResult();
+	}
+
+	const url = modelsUrlFor(input.endpoint);
+	if (url === undefined) {
+		return failureResult(
+			attributeFailure({ malformedResponse: true }),
+			undefined,
+			undefined,
+			input.apiKey,
+		);
+	}
+
+	const blocked = preflightMixedContent({
+		isSecureContext: globalThis.isSecureContext === true,
+		pageUrl: typeof location === "undefined" ? undefined : location.href,
+		endpoint: input.endpoint,
+	});
+	if (blocked !== undefined) {
+		return failureResult(blocked, undefined, undefined, input.apiKey);
+	}
+
+	const key = input.apiKey.trim();
+	const headers: Record<string, string> = {
+		Accept: "application/json",
+		...(key !== "" && { Authorization: `Bearer ${key}` }),
+	};
+
+	try {
+		const response = await transportFor(transport)(url, {
+			method: "GET",
+			headers,
+			signal: input.signal,
+		});
+		const status =
+			typeof response.status === "number" ? response.status : undefined;
+		const failed =
+			response.ok === false ||
+			(status !== undefined && (status < 200 || status >= 300));
+		if (failed) {
+			return failureResult(
+				attributeFailure({ httpStatus: status }),
+				status,
+				undefined,
+				input.apiKey,
+			);
+		}
+
+		let payload: unknown;
+		try {
+			payload = await response.json();
+		} catch (error) {
+			return failureResult(
+				attributeFailure({
+					httpStatus: status,
+					error,
+					malformedResponse: true,
+				}),
+				status,
+				error,
+				input.apiKey,
+			);
+		}
+
+		const parsed = parseModelList(payload);
+		if (!parsed.ok) {
+			return failureResult(
+				attributeFailure({
+					httpStatus: status,
+					malformedResponse: true,
+				}),
+				status,
+				undefined,
+				input.apiKey,
+			);
+		}
+
+		const vision = modalitiesFromResponse(payload);
+		logger.info("model-list.success", { modelCount: parsed.models.length });
+		return {
+			ok: true,
+			models: parsed.models,
+			...(vision !== undefined && { vision }),
+		};
+	} catch (error) {
+		const status = statusOf(error);
+		return failureResult(
+			attributeFailure({ httpStatus: status, error }),
+			status,
+			error,
+			input.apiKey,
+		);
+	}
+}
+
+/** Controller outcome: stale work is explicitly ignored by the caller. */
+export type ModelListControllerOutcome = LatestOutcome<ModelListResult>;
+
+/** Injectable seams for the debounced latest-wins controller. */
+export interface ModelListControllerOptions {
+	readonly transport?: ModelListTransport;
+	readonly debounceMs?: number;
+	readonly isOnline?: () => boolean;
+}
+
+/** Public model-list controller used by the settings form. */
+export interface ModelListController {
+	request(
+		input: Omit<LoadModelsInput, "online" | "signal">,
+	): Promise<ModelListControllerOutcome>;
+	cancel(): void;
+	pending(): boolean;
+}
+
+/**
+ * Compose the existing debounce and latest-wins primitives for model queries.
+ *
+ * The first promise in a debounce window resolves as `superseded`, so callers
+ * never retain a pending promise for a request that was replaced before it ran.
+ */
+export function createModelListController(
+	options: ModelListControllerOptions = {},
+): ModelListController {
+	const latest = createLatestCall();
+	const transport = options.transport ?? defaultTransport;
+	const waitMs = options.debounceMs ?? MODEL_LIST_DEBOUNCE_MS;
+	let pendingRequest:
+		| {
+				readonly input: Omit<LoadModelsInput, "online" | "signal">;
+				readonly resolve: (outcome: ModelListControllerOutcome) => void;
+		  }
+		| undefined;
+
+	const schedule = debounce(() => {
+		const request = pendingRequest;
+		pendingRequest = undefined;
+		if (request === undefined) return;
+
+		void latest
+			.run((signal) =>
+				loadModels({ ...request.input, signal, online: true }, transport),
+			)
+			.then(request.resolve);
+	}, waitMs);
+
+	return {
+		request(input) {
+			const online = options.isOnline?.() ?? browserOnline();
+			if (
+				requiresNetwork("modelList") &&
+				!isFeatureAvailable("modelList", online)
+			) {
+				return Promise.resolve({ kind: "result", value: offlineResult() });
+			}
+
+			pendingRequest?.resolve({ kind: "superseded" });
+			return new Promise((resolve) => {
+				pendingRequest = { input, resolve };
+				schedule();
+			});
+		},
+		cancel() {
+			schedule.cancel();
+			pendingRequest?.resolve({ kind: "superseded" });
+			pendingRequest = undefined;
+			latest.cancel();
+		},
+		pending() {
+			return schedule.pending() || latest.busy();
+		},
+	};
 }
