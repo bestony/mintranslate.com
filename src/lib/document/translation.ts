@@ -24,6 +24,8 @@ import { retryAfterOf, statusOf } from "../connections/error-shape";
 import type { Connection } from "../connections/model";
 import {
 	createModelCaller,
+	type ModelCallRequest,
+	type ModelCaller,
 	type ModelTransport,
 } from "../connections/model-caller";
 import {
@@ -137,6 +139,27 @@ function memoryContext(
 
 function abortIfNeeded(signal: AbortSignal | undefined): void {
 	if (signal?.aborted) throw new DocumentCancelledError();
+}
+
+/** Wake a queued model call when the document-level cancellation signal fires. */
+async function callWithAbort(
+	caller: ModelCaller,
+	request: ModelCallRequest,
+	signal: AbortSignal | undefined,
+): Promise<Awaited<ReturnType<ModelCaller["call"]>>> {
+	if (signal === undefined) return caller.call(request);
+	if (signal.aborted) throw new DocumentCancelledError();
+
+	let onAbort = () => {};
+	const aborted = new Promise<never>((_, reject) => {
+		onAbort = () => reject(new DocumentCancelledError());
+		signal.addEventListener("abort", onAbort, { once: true });
+	});
+	try {
+		return await Promise.race([caller.call(request), aborted]);
+	} finally {
+		signal.removeEventListener("abort", onAbort);
+	}
 }
 
 async function sleepWithAbort(
@@ -314,14 +337,18 @@ export async function translateDocument(
 				});
 				callers.add(caller);
 				try {
-					const outcome = await caller.call({
-						connection: request.connection,
-						apiKey: request.apiKey,
-						requirement: "text",
-						systemInstruction: prompt.systemInstruction,
-						userContent: prompt.userContent,
-						dedupeKey: `${requestId}:${chunkKey(entry.chunk)}:${rateLimitAttempts}`,
-					});
+					const outcome = await callWithAbort(
+						caller,
+						{
+							connection: request.connection,
+							apiKey: request.apiKey,
+							requirement: "text",
+							systemInstruction: prompt.systemInstruction,
+							userContent: prompt.userContent,
+							dedupeKey: `${requestId}:${chunkKey(entry.chunk)}:${rateLimitAttempts}`,
+						},
+						signal,
+					);
 					if (outcome.kind === "refused") {
 						if (outcome.refusal.kind === "superseded" && signal?.aborted)
 							throw new DocumentCancelledError();

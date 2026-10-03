@@ -94,6 +94,7 @@ describe("document translation orchestration", () => {
 		const record = recordWithTexts(["API token", "ordinary"]);
 		const calls: string[] = [];
 		const contexts: unknown[] = [];
+		const debug = vi.spyOn(logger, "debug");
 		const memory: TranslationMemoryPort = {
 			findTranslation: async (text, context) => {
 				contexts.push(context);
@@ -139,6 +140,14 @@ describe("document translation orchestration", () => {
 				tier: "fast",
 			}),
 		]);
+		expect(
+			debug.mock.calls.some(
+				([event, fields]) =>
+					event === "document.chunk.memory-hit" &&
+					(fields as { memoryHits?: number } | undefined)?.memoryHits === 1,
+			),
+		).toBe(true);
+		debug.mockRestore();
 	});
 
 	it("uses Retry-After and preserves progress after an exhausted retry", async () => {
@@ -242,7 +251,7 @@ describe("document translation orchestration", () => {
 	});
 
 	it("keeps an earlier completed chunk when a later chunk is cancelled", async () => {
-		const record = recordWithTexts(["quick", "long"]);
+		const record = recordWithTexts(["quick", "long", "middle", "pending"]);
 		const controller = new AbortController();
 		let calls = 0;
 		const resultPromise = translateDocument(
@@ -265,14 +274,19 @@ describe("document translation orchestration", () => {
 				},
 			},
 		);
-		await waitFor(() => calls === 2);
+		await waitFor(() => calls >= 3);
+		const callsAtAbort = calls;
 		controller.abort();
 		const result = await resultPromise;
+		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		expect(result.kind).toBe("cancelled");
+		expect(calls).toBe(callsAtAbort);
 		if (result.kind === "cancelled") {
 			expect(result.record.chunks[0]?.target).toBe("快速");
 			expect(result.record.chunks[1]?.target).toBeUndefined();
+			expect(result.record.chunks[2]?.target).toBeUndefined();
+			expect(result.record.chunks[3]?.target).toBeUndefined();
 			expect(result.record.failureKind).toBe("cancelled");
 		}
 	});
