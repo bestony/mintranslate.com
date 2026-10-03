@@ -86,7 +86,11 @@ import {
 	SpeechRateControl,
 	useSpeech,
 } from "../output/SpeechControls";
-import { LanguagePicker, languageChipLabel } from "./LanguagePicker";
+import {
+	LanguagePicker,
+	languageChipLabel,
+	selectedSourceLanguage,
+} from "./LanguagePicker";
 
 /**
  * How the modifier key is shown for the current platform.
@@ -476,7 +480,6 @@ export function TranslationWorkspace() {
 	const liveValues = {
 		active,
 		store,
-		detected,
 		promptStyle,
 		customInstruction,
 		sourceLang,
@@ -501,6 +504,10 @@ export function TranslationWorkspace() {
 				callbacks: {
 					onStart: (_requestId, input) => {
 						const { reportSubmit } = live.current;
+						// Detection belongs to the current input. Clear the previous result
+						// before a new request so the chip cannot show stale language data.
+						detectedRef.current = undefined;
+						setDetected(undefined);
 						lastInput.current = {
 							text: input.text,
 							sourceLang: input.sourceLang,
@@ -533,6 +540,18 @@ export function TranslationWorkspace() {
 							analytics,
 							persistHistory,
 						} = live.current;
+						const detectedInput = lastInput.current;
+						if (
+							detectedInput?.sourceLang === AUTO_DETECT &&
+							detectedRef.current === undefined
+						) {
+							// The current model contract returns translated text only. Keep the
+							// existing fallback until a structured detection field is available.
+							const detectedLanguage =
+								detectedInput.targetLang === "en" ? "zh-Hans" : "en";
+							detectedRef.current = detectedLanguage;
+							setDetected(detectedLanguage);
+						}
 						const resolvedMetadata: TranslationResultMetadata = metadata ?? {
 							memoryHit: false,
 							memoryReferences: [],
@@ -648,7 +667,7 @@ export function TranslationWorkspace() {
 					memoryReferences = [],
 					glossaryMatches = [],
 				}) => {
-					const { active, store, detected, promptStyle, customInstruction } =
+					const { active, store, promptStyle, customInstruction } =
 						live.current;
 					if (!active) throw new Error("no active connection");
 					runStartedAt.current = Date.now();
@@ -701,11 +720,6 @@ export function TranslationWorkspace() {
 							);
 						}
 						throw new Error(outcome.refusal.reason);
-					}
-
-					// Detect-language回显: the model's answer is the only signal we have.
-					if (input.sourceLang === AUTO_DETECT && detected === undefined) {
-						setDetected(input.targetLang === "en" ? "zh-Hans" : "en");
 					}
 
 					logger.debug("translation.run.done", {
@@ -776,6 +790,7 @@ export function TranslationWorkspace() {
 					trigger: "search_list",
 				});
 				if (code === AUTO_DETECT) {
+					detectedRef.current = undefined;
 					setSourceLang(AUTO_DETECT);
 					setDetected(undefined);
 				} else {
@@ -785,6 +800,8 @@ export function TranslationWorkspace() {
 						[targetLang],
 					);
 					setSourceLang(code);
+					detectedRef.current = undefined;
+					setDetected(undefined);
 					setTargetLang(resolved.pair.target);
 					if (resolved.notice) setNotice(resolved.notice);
 				}
@@ -886,8 +903,14 @@ export function TranslationWorkspace() {
 		sourceLang,
 	]);
 
-	/** Whether the source side is on auto-detect, which is also a selected state. */
-	const sourceIsAuto = sourceLang === AUTO_DETECT;
+	// Keep auto-detect as the request mode, while moving the visual selection to
+	// the detected quick chip when that language is visible in the row.
+	const selectedSourceLang = selectedSourceLanguage(
+		sourceLang,
+		detected,
+		sourceChips,
+	);
+	const sourceIsAuto = selectedSourceLang === AUTO_DETECT;
 
 	// Image mode. Rendered as its own subtree with the same chrome, so the text-mode
 	// markup below stays byte-identical and the two modes never share state.
@@ -1009,10 +1032,7 @@ export function TranslationWorkspace() {
 							className={chipClass(sourceIsAuto)}
 							onClick={() => setPicker("source")}
 						>
-							{languageChipLabel(
-								sourceLang,
-								detected !== undefined && sourceLang === AUTO_DETECT,
-							)}
+							{languageChipLabel(sourceLang, detected)}
 						</button>
 						{/* Mobile shows one fewer quick entry so the row stays on a single
 						    line down to 390px; both entries remain reachable via 更多. */}
@@ -1020,14 +1040,15 @@ export function TranslationWorkspace() {
 							<button
 								key={code}
 								type="button"
-								aria-pressed={sourceLang === code}
-								aria-current={sourceLang === code ? "true" : undefined}
+								aria-pressed={selectedSourceLang === code}
+								aria-current={selectedSourceLang === code ? "true" : undefined}
 								className={chipClass(
-									sourceLang === code,
+									selectedSourceLang === code,
 									index >= MOBILE_CHIP_COUNT,
 								)}
 								onClick={() => {
 									setSourceLang(code);
+									detectedRef.current = undefined;
 									setDetected(undefined);
 								}}
 							>
@@ -1110,6 +1131,7 @@ export function TranslationWorkspace() {
 										setOutput("");
 										setFailure(undefined);
 										setNotice(undefined);
+										detectedRef.current = undefined;
 										setDetected(undefined);
 										textareaRef.current?.focus();
 									}}
@@ -1150,7 +1172,7 @@ export function TranslationWorkspace() {
 							className={chipClass(true)}
 							onClick={() => setPicker("target")}
 						>
-							{languageChipLabel(targetLang, false)}
+							{languageChipLabel(targetLang)}
 						</button>
 						{targetChips.map((code, index) => (
 							<button
