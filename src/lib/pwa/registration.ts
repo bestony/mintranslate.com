@@ -19,16 +19,26 @@ import { logger } from "../logger";
 /** Scope-relative path of the generated worker. */
 export const SERVICE_WORKER_URL = "sw.js";
 
-/** The worker handle this module needs. */
+/** The waiting worker handle the update flow needs. */
+export interface WaitingWorkerLike {
+	/** Current lifecycle state, when the browser exposes it. */
+	readonly state?: string;
+	/** Ask the worker to skip the waiting phase. */
+	postMessage?: (message: unknown) => void;
+	/** Observe lifecycle transitions. */
+	addEventListener?: (type: "statechange", listener: () => void) => void;
+	/** Stop observing lifecycle transitions. */
+	removeEventListener?: (type: "statechange", listener: () => void) => void;
+}
+
+/** The registration handle this module needs. */
 export interface RegistrationLike {
 	/** Ask the browser to activate this worker now. */
 	update?: () => Promise<unknown>;
 	/** True while a newer worker is installed but waiting to activate. */
-	waiting: unknown | null;
+	waiting: WaitingWorkerLike | null;
 	/** Present on newer browsers; used to detect a controller change. */
-	active?: unknown | null;
-	/** Request activation of a waiting worker (sends `SKIP_WAITING`). */
-	postMessage?: (message: unknown) => void;
+	active?: WaitingWorkerLike | null;
 }
 
 /** The slice of the browser API this module needs, injectable for tests. */

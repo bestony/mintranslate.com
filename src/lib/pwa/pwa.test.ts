@@ -11,10 +11,12 @@ import {
 	createServiceWorkerRegistration,
 	type RegistrationEnvironment,
 	type RegistrationLike,
+	type WaitingWorkerLike,
 } from "./registration";
 import {
 	createUpdateFlow,
 	SKIP_WAITING_MESSAGE,
+	UPDATE_ACTIVATION_TIMEOUT_MS,
 	UPDATE_CHECK_THROTTLE_MS,
 } from "./update";
 
@@ -240,12 +242,36 @@ describe("service worker registration", () => {
 });
 
 describe("update flow", () => {
+	function waitingWorker() {
+		let state = "installed";
+		const listeners = new Set<() => void>();
+		const worker: WaitingWorkerLike = {
+			get state() {
+				return state;
+			},
+			postMessage: vi.fn(),
+			addEventListener: (_type, listener) => {
+				listeners.add(listener);
+			},
+			removeEventListener: (_type, listener) => {
+				listeners.delete(listener);
+			},
+		};
+
+		return {
+			worker,
+			activate() {
+				state = "activated";
+				for (const listener of listeners) listener();
+			},
+		};
+	}
+
 	function harness(
 		options: { readonly waiting?: RegistrationLike["waiting"] } = {},
 	) {
 		const registration: RegistrationLike = {
 			waiting: options.waiting ?? null,
-			postMessage: vi.fn(),
 			update: vi.fn().mockResolvedValue(undefined),
 		};
 		const probe = vi.fn().mockResolvedValue(undefined);
@@ -269,13 +295,37 @@ describe("update flow", () => {
 		expect(reload).not.toHaveBeenCalled();
 	});
 
-	it("applies the update only when asked", () => {
-		const { flow, registration, reload } = harness({ waiting: {} });
+	it("sends the activation message to the waiting worker", async () => {
+		const waiting = waitingWorker();
+		const { flow, reload } = harness({ waiting: waiting.worker });
 		flow.markWaiting();
-		flow.apply();
+		const applying = flow.apply();
 
-		expect(registration.postMessage).toHaveBeenCalledWith(SKIP_WAITING_MESSAGE);
+		expect(waiting.worker.postMessage).toHaveBeenCalledWith(
+			SKIP_WAITING_MESSAGE,
+		);
+		// Reloading before activation can still load the old active worker.
+		expect(reload).not.toHaveBeenCalled();
+
+		waiting.activate();
+		await applying;
 		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps the update available when activation does not finish", async () => {
+		const waiting = waitingWorker();
+		const { flow, reload } = harness({ waiting: waiting.worker });
+		flow.markWaiting();
+
+		const applying = flow.apply();
+		await vi.advanceTimersByTimeAsync(UPDATE_ACTIVATION_TIMEOUT_MS);
+		await applying;
+
+		expect(reload).not.toHaveBeenCalled();
+		expect(flow.current().updateReady).toBe(true);
+		expect(
+			logs.some((entry) => entry.event === "pwa.update.activation.failed"),
+		).toBe(true);
 	});
 
 	it("reloads even without a waiting worker so the action is not a no-op", () => {

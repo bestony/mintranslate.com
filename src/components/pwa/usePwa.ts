@@ -143,7 +143,7 @@ export function usePwa(): PwaState {
 	}, [environment]);
 
 	const applyUpdate = useCallback(() => {
-		updateFlow.apply();
+		void updateFlow.apply();
 	}, [updateFlow]);
 
 	const checkForUpdate = useCallback(() => {
