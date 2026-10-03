@@ -9,12 +9,12 @@ Validation was run on 2026-10-03 in the `feat/document-translation` worktree.
   parsed. The PDF worker is emitted as the local `pdf.worker-*.js` asset and is
   selected with a Vite `new URL()` reference. No CDN `workerSrc` or remote
   resource is configured.
-- The shell's entry chunk is `360,406` bytes (352.0 KiB), below the existing
+- The shell's entry chunk is `360,342` bytes (351.9 KiB), below the existing
   372 KiB first-screen baseline. The shell does not reference `pdfjs-dist` or
   `fflate`; the document parser and PDF worker are on-demand chunks.
 - The build emits the on-demand PDF assets `pdf-*.js` (`487,951` bytes) and
   `pdf.worker-*.js` (`1,194,075` bytes). The document Worker/fallback bundle is
-  `worker-*.js` (`510,969` bytes); this is also on demand.
+  `worker-*.js` (`510,962` bytes); this is also on demand.
 
 ## PDF resources and offline cache
 
