@@ -241,6 +241,57 @@ describe("document translation orchestration", () => {
 		}
 	});
 
+	it("wakes a rate-limit backoff when another chunk fails", async () => {
+		const record = recordWithTexts(["fails", "backoff"]);
+		const limiters = createKeyedLimiters(2);
+		let sleepStarted = false;
+		let releaseSleep = () => {};
+		const sleepPending = new Promise<void>((resolve) => {
+			releaseSleep = resolve;
+		});
+
+		try {
+			const resultPromise = translateDocument(
+				{ record, connection, apiKey: "key" },
+				{
+					limiterFor: limiters.for,
+					maxRateLimitRetries: 1,
+					glossaryMatcher: async () => [],
+					sleep: async () => {
+						sleepStarted = true;
+						await sleepPending;
+					},
+					transport: async (request) => {
+						if (request.userContent === "fails") {
+							await waitFor(() => sleepStarted);
+							throw new Error("terminal failure");
+						}
+						throw Object.assign(new Error("rate limited"), {
+							status: 429,
+							headers: { "retry-after": "10" },
+						});
+					},
+				},
+			);
+			const result = await Promise.race([
+				resultPromise.then((value) => ({ kind: "result" as const, value })),
+				new Promise<{ kind: "timeout" }>((resolve) =>
+					setTimeout(() => resolve({ kind: "timeout" }), 250),
+				),
+			]);
+
+			expect(result.kind).toBe("result");
+			if (result.kind === "result") {
+				expect(result.value.kind).toBe("failed");
+				if (result.value.kind === "failed") {
+					expect(result.value.record.failureKind).toBe("error");
+				}
+			}
+		} finally {
+			releaseSleep();
+		}
+	});
+
 	it("resumes only unfinished chunks", async () => {
 		const base = recordWithTexts(["already done", "needs work"]);
 		const record: DocumentTaskRecord = {

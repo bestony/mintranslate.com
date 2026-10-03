@@ -196,25 +196,26 @@ async function callWithAbort(
 async function sleepWithAbort(
 	milliseconds: number,
 	signal: AbortSignal | undefined,
+	stopSignal: AbortSignal,
 	sleep: (milliseconds: number) => Promise<void>,
 ): Promise<void> {
 	abortIfNeeded(signal);
+	if (stopSignal.aborted) throw new DocumentStoppedError();
 	if (milliseconds <= 0) return;
-	if (signal === undefined) {
-		await sleep(milliseconds);
-		return;
-	}
 	await new Promise<void>((resolve, reject) => {
 		let settled = false;
 		const finish = (error?: unknown) => {
 			if (settled) return;
 			settled = true;
-			signal.removeEventListener("abort", onAbort);
+			signal?.removeEventListener("abort", onUserAbort);
+			stopSignal.removeEventListener("abort", onStopAbort);
 			if (error === undefined) resolve();
 			else reject(error);
 		};
-		const onAbort = () => finish(new DocumentCancelledError());
-		signal.addEventListener("abort", onAbort, { once: true });
+		const onUserAbort = () => finish(new DocumentCancelledError());
+		const onStopAbort = () => finish(new DocumentStoppedError());
+		signal?.addEventListener("abort", onUserAbort, { once: true });
+		stopSignal.addEventListener("abort", onStopAbort, { once: true });
 		void sleep(milliseconds).then(
 			() => finish(),
 			(error) => finish(error),
@@ -255,12 +256,14 @@ export async function translateDocument(
 	let translatedChunks = 0;
 	let stopped = false;
 	let terminalFailure: unknown;
+	const stopController = new AbortController();
 	let current: DocumentTaskRecord = request.record;
 	let saveTail = Promise.resolve();
 
 	const stopForFailure = (error: unknown): void => {
 		if (terminalFailure === undefined) terminalFailure = error;
 		stopped = true;
+		if (!stopController.signal.aborted) stopController.abort();
 	};
 
 	const guardedLimiterFor = (
@@ -480,7 +483,12 @@ export async function translateDocument(
 						});
 						if (decision.kind === "retry") {
 							rateLimitAttempts += 1;
-							await sleepWithAbort(decision.waitMs, signal, sleep);
+							await sleepWithAbort(
+								decision.waitMs,
+								signal,
+								stopController.signal,
+								sleep,
+							);
 							continue;
 						}
 					}
