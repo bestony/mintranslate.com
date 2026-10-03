@@ -15,7 +15,15 @@
  */
 
 import { Link } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	lazy,
+	Suspense,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import {
 	createAnalytics,
 	createThrottledSubmit,
@@ -82,7 +90,6 @@ import {
 	truncationNotice,
 } from "#/lib/translation/result";
 import { fromQueryString, writeWorkspaceUrl } from "#/lib/url-state";
-import { DocumentTranslationMode } from "../document/DocumentTranslationMode";
 import { ImageTranslationMode } from "../image/ImageTranslationMode";
 import { FeedbackPanel } from "../output/FeedbackPanel";
 import { SearchLookupButton } from "../output/SearchLookupButton";
@@ -123,6 +130,13 @@ function useModifierLabel(): string {
 
 /** One connection's limiter set, shared across the component's lifetime. */
 const limiters = createKeyedLimiters(2);
+
+/** Keep document parsing and its ZIP dependency out of the first-screen chunk. */
+const DocumentTranslationMode = lazy(() =>
+	import("../document/DocumentTranslationMode").then((module) => ({
+		default: module.DocumentTranslationMode,
+	})),
+);
 
 /** Chip sizes and alignment. */
 const CHIP =
@@ -982,15 +996,23 @@ export function TranslationWorkspace() {
 							analytics={analytics}
 						/>
 					) : (
-						<DocumentTranslationMode
-							connection={active}
-							apiKey={active ? store.keyFor(active.id) : ""}
-							sourceLang={sourceLang}
-							targetLang={targetLang}
-							styleId={promptStyle}
-							customInstruction={customInstruction}
-							analytics={analytics}
-						/>
+						<Suspense
+							fallback={
+								<p className="text-muted-foreground text-xs">
+									正在准备文档模式…
+								</p>
+							}
+						>
+							<DocumentTranslationMode
+								connection={active}
+								apiKey={active ? store.keyFor(active.id) : ""}
+								sourceLang={sourceLang}
+								targetLang={targetLang}
+								styleId={promptStyle}
+								customInstruction={customInstruction}
+								analytics={analytics}
+							/>
+						</Suspense>
 					)}
 				</div>
 			</div>

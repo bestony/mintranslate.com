@@ -33,7 +33,12 @@ import {
 	openDocumentTaskStore,
 } from "#/lib/document/task-store";
 import { translateDocument } from "#/lib/document/translation";
+import { getGlossaryVersion, matchTerms } from "#/lib/glossary";
 import { logger } from "#/lib/logger";
+import {
+	getDefaultTranslationMemoryStore,
+	readTranslationMemoryEnabled,
+} from "#/lib/translation-memory";
 import { DocumentDropZone } from "./DocumentDropZone";
 import { DocumentResultView } from "./DocumentResultView";
 
@@ -201,6 +206,11 @@ export function DocumentTranslationMode({
 			setTask(record);
 			setNotice(undefined);
 			try {
+				const pair = { sl: record.sourceLang, tl: record.targetLang };
+				const glossaryVersion = await getGlossaryVersion(pair);
+				const memory = readTranslationMemoryEnabled()
+					? await getDefaultTranslationMemoryStore()
+					: undefined;
 				const outcome = await translateDocument(
 					{
 						record,
@@ -210,7 +220,9 @@ export function DocumentTranslationMode({
 						signal: controller.signal,
 					},
 					{
-						glossaryVersion: "none",
+						glossaryVersion,
+						glossaryMatcher: matchTerms,
+						memory,
 						onUpdate: (next) => {
 							setTask(next);
 							return currentStore.save(next);

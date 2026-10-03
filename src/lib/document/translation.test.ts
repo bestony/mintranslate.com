@@ -241,6 +241,42 @@ describe("document translation orchestration", () => {
 		}
 	});
 
+	it("keeps an earlier completed chunk when a later chunk is cancelled", async () => {
+		const record = recordWithTexts(["quick", "long"]);
+		const controller = new AbortController();
+		let calls = 0;
+		const resultPromise = translateDocument(
+			{ record, connection, apiKey: "key", signal: controller.signal },
+			{
+				glossaryMatcher: async () => [],
+				transport: async (request, signal) => {
+					calls += 1;
+					if (request.userContent === "quick") return "快速";
+					await new Promise<never>((_resolve, reject) => {
+						signal.addEventListener(
+							"abort",
+							() => reject(new Error("aborted")),
+							{
+								once: true,
+							},
+						);
+					});
+					return "unreachable";
+				},
+			},
+		);
+		await waitFor(() => calls === 2);
+		controller.abort();
+		const result = await resultPromise;
+
+		expect(result.kind).toBe("cancelled");
+		if (result.kind === "cancelled") {
+			expect(result.record.chunks[0]?.target).toBe("快速");
+			expect(result.record.chunks[1]?.target).toBeUndefined();
+			expect(result.record.failureKind).toBe("cancelled");
+		}
+	});
+
 	it("keeps document text out of orchestration logs", async () => {
 		const record = recordWithTexts(["SECRET_SOURCE"]);
 		const debug = vi.spyOn(logger, "debug");
