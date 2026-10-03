@@ -101,31 +101,54 @@ function paragraphsIn(
 	xml: string,
 	spec: FormatSpec,
 ): Paragraph[] {
-	const paragraphs: Paragraph[] = [];
 	const escaped = spec.paragraphElement.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-	const pattern = new RegExp(
-		`<${escaped}(?:\\s[^>]*)?>([\\s\\S]*?)</${escaped}\\s*>`,
+	const paragraphTags = new RegExp(
+		`<(/?)${escaped}(?:\\s[^>]*)?(\/?)>`,
 		"g",
 	);
+	const allSpans = findTextSpans(xml, spec.textElement);
+	const frames: {
+		readonly order: number;
+		readonly bodyStart: number;
+		readonly spans: ReturnType<typeof findTextSpans>;
+	}[] = [];
+	const open: (typeof frames)[number][] = [];
+	let nextSpan = 0;
 
-	let index = 0;
-	for (const match of xml.matchAll(pattern)) {
-		const body = match[1];
-		const bodyStart = (match.index ?? 0) + match[0].indexOf(body);
-		const spans = findTextSpans(body, spec.textElement).map((span) => ({
-			...span,
-			// Offsets are relative to the body; shift them into the part's coordinates
-			// so replacements can be applied to the part directly.
-			start: span.start + bodyStart,
-			end: span.end + bodyStart,
-		}));
+	const assignSpansBefore = (end: number): void => {
+		while (nextSpan < allSpans.length) {
+			const span = allSpans[nextSpan];
+			if (span.start >= end) break;
+			nextSpan += 1;
+			const current = open[open.length - 1];
+			if (current !== undefined && span.start >= current.bodyStart) {
+				current.spans.push(span);
+			}
+		}
+	};
 
-		if (spans.length === 0) continue;
-		paragraphs.push({ part, index, spans });
-		index += 1;
+	for (const match of xml.matchAll(paragraphTags)) {
+		const at = match.index ?? 0;
+		assignSpansBefore(at);
+		if (match[1] === "/") {
+			open.pop();
+			continue;
+		}
+		if (match[2] === "/") continue;
+		const frame = {
+			order: frames.length,
+			bodyStart: at + match[0].length,
+			spans: [] as ReturnType<typeof findTextSpans>,
+		};
+		frames.push(frame);
+		open.push(frame);
 	}
+	assignSpansBefore(xml.length);
 
-	return paragraphs;
+	return frames
+		.filter((frame) => frame.spans.length > 0)
+		.sort((left, right) => left.order - right.order)
+		.map((frame, index) => ({ part, index, spans: frame.spans }));
 }
 
 /** A paragraph together with the text read from it. */

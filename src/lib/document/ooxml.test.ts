@@ -115,6 +115,30 @@ describe("docx parsing", () => {
 		expect(texts).toContain("Comment text");
 	});
 
+	it("keeps nested text-box paragraphs separate during parse and rebuild", () => {
+		const xml = `<w:document><w:body><w:p><w:r><w:t>Outer before </w:t></w:r><w:r><w:txbxContent><w:p><w:r><w:t>Inner text</w:t></w:r></w:p></w:txbxContent></w:r><w:r><w:t>outer after</w:t></w:r></w:p></w:body></w:document>`;
+		const bytes = pack({ "word/document.xml": xml });
+		const parsed = parseOoxml(bytes, "docx");
+
+		expect(parsed.chunks.map((chunk) => chunk.text)).toEqual([
+			"Outer before outer after",
+			"Inner text",
+		]);
+
+		const rebuilt = rebuildOoxml(
+			bytes,
+			"docx",
+			parsed.chunks.map((chunk) => ({
+				location: chunk.location,
+				target: `[${chunk.text}]`,
+			})),
+		);
+		expect(parseOoxml(rebuilt.bytes, "docx").chunks.map((c) => c.text)).toEqual([
+			"[Outer before outer after]",
+			"[Inner text]",
+		]);
+	});
+
 	it("records which part each chunk came from", () => {
 		const parsed = parseOoxml(
 			pack({
