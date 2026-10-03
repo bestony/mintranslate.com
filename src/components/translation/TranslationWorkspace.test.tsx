@@ -126,7 +126,9 @@ describe("TranslationWorkspace render stability", () => {
 			statusDetail: "模型需要下载",
 		} as never;
 
-		expect(selectWorkspaceConnection(undefined, [failed], "text")).toBeUndefined();
+		expect(
+			selectWorkspaceConnection(undefined, [failed], "text"),
+		).toBeUndefined();
 	});
 
 	let container: HTMLDivElement;
