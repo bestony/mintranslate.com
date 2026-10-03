@@ -329,30 +329,56 @@ export function useConnectionStore(): ConnectionStore {
 		logger.info("connection.tier_changed", { tier: nextTier });
 	}, []);
 
-	return {
-		connections,
-		activeId: effectiveActiveId,
-		tier,
-		loadWarning,
-		activeConnection,
-		usableConnections,
-		keyFor,
-		hasKey,
-		createFromPreset,
-		update,
-		setKey,
-		clearAllKeys,
-		setStatus,
-		activate,
-		remove,
-		setTier,
-		languageUsage,
-		noteLanguageUse: (code: string) => {
-			if (code === "") return;
-			setLanguageUsage((current) => ({
-				...current,
-				[code]: (current[code] ?? 0) + 1,
-			}));
-		},
-	};
+	const noteLanguageUse = useCallback((code: string) => {
+		if (code === "") return;
+		setLanguageUsage((current) => ({
+			...current,
+			[code]: (current[code] ?? 0) + 1,
+		}));
+	}, []);
+
+	// Consumers put the store in hook dependency lists, so its identity must
+	// change only when its contents do, not on every render.
+	return useMemo(
+		() => ({
+			connections,
+			activeId: effectiveActiveId,
+			tier,
+			loadWarning,
+			activeConnection,
+			usableConnections,
+			keyFor,
+			hasKey,
+			createFromPreset,
+			update,
+			setKey,
+			clearAllKeys,
+			setStatus,
+			activate,
+			remove,
+			setTier,
+			languageUsage,
+			noteLanguageUse,
+		}),
+		[
+			connections,
+			effectiveActiveId,
+			tier,
+			loadWarning,
+			activeConnection,
+			usableConnections,
+			keyFor,
+			hasKey,
+			createFromPreset,
+			update,
+			setKey,
+			clearAllKeys,
+			setStatus,
+			activate,
+			remove,
+			setTier,
+			languageUsage,
+			noteLanguageUse,
+		],
+	);
 }

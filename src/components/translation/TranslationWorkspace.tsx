@@ -284,12 +284,17 @@ export function TranslationWorkspace() {
 	/**
 	 * Analytics entry point.
 	 *
-	 * Created once; the connection state is read through a closure so the tracker
-	 * does not need rebuilding when a connection is added.
+	 * Created once; the connection state is read through a ref so the tracker
+	 * does not need rebuilding when a connection is added. Its identity must stay
+	 * stable: callbacks and effects below depend on it.
 	 */
+	const byokConfigured = useRef(false);
+	useEffect(() => {
+		byokConfigured.current = store.activeId !== null;
+	}, [store.activeId]);
 	const analytics = useMemo(
-		() => createAnalytics({ byokConfigured: () => store.activeId !== null }),
-		[store],
+		() => createAnalytics({ byokConfigured: () => byokConfigured.current }),
+		[],
 	);
 
 	/**
@@ -357,8 +362,16 @@ export function TranslationWorkspace() {
 
 	// Restore state from the URL once, on mount. `fromQueryString` never returns
 	// an unbounded text value, so a shared link cannot overflow the input.
+	//
+	// The guard is load-bearing. The effect below mirrors state into the URL, so
+	// running this one again reads back the URL of the previous render: with the
+	// text changed in between, the two effects then swap the old and new text
+	// forever (an infinite render loop from the second typed character on).
+	const restoredFromUrl = useRef(false);
 	useEffect(() => {
 		if (typeof window === "undefined") return;
+		if (restoredFromUrl.current) return;
+		restoredFromUrl.current = true;
 		const restored = fromQueryString(window.location.search);
 		if (restored.sourceLang !== undefined) {
 			reportLanguageChange({
@@ -449,6 +462,37 @@ export function TranslationWorkspace() {
 		[getHistoryDb],
 	);
 
+	/**
+	 * Values the controller callbacks read at call time.
+	 *
+	 * The controller must live for the whole component lifetime: it owns the
+	 * debounce timer, the IME composition flag, the "unchanged input" guard and
+	 * the latest-wins slot. Rebuilding it whenever one of these values changed
+	 * (the connection store is a new object on every render) dropped all four:
+	 * each re-render after a success scheduled another request for the same
+	 * text, and the requests multiplied without bound. The callbacks therefore
+	 * read the current values through this ref instead of closing over them.
+	 */
+	const liveValues = {
+		active,
+		store,
+		detected,
+		promptStyle,
+		customInstruction,
+		sourceLang,
+		targetLang,
+		analytics,
+		reportSubmit,
+		persistHistory,
+	};
+	const live = useRef(liveValues);
+	// Declared before the effect that feeds the controller, so a request started
+	// from that effect already sees the values of the same render.
+	useEffect(() => {
+		live.current = liveValues;
+	});
+
+	// Created once. Everything that changes over time is read from `live`.
 	const controller = useMemo(
 		() =>
 			createTranslationController({
@@ -456,6 +500,7 @@ export function TranslationWorkspace() {
 				glossaryMatcher: matchTerms,
 				callbacks: {
 					onStart: (_requestId, input) => {
+						const { reportSubmit } = live.current;
 						lastInput.current = {
 							text: input.text,
 							sourceLang: input.sourceLang,
@@ -480,6 +525,14 @@ export function TranslationWorkspace() {
 					},
 					onChunk: (_id, delta) => setOutput((current) => current + delta),
 					onSuccess: (_id, result, _ttftMs, metadata) => {
+						const {
+							active,
+							store,
+							sourceLang,
+							targetLang,
+							analytics,
+							persistHistory,
+						} = live.current;
 						const resolvedMetadata: TranslationResultMetadata = metadata ?? {
 							memoryHit: false,
 							memoryReferences: [],
@@ -534,6 +587,7 @@ export function TranslationWorkspace() {
 						});
 					},
 					onFailure: (_id, error) => {
+						const { active, analytics } = live.current;
 						// The input is deliberately left untouched, and any previous
 						// successful output stays until a new success replaces it.
 						setPending(false);
@@ -594,6 +648,8 @@ export function TranslationWorkspace() {
 					memoryReferences = [],
 					glossaryMatches = [],
 				}) => {
+					const { active, store, detected, promptStyle, customInstruction } =
+						live.current;
 					if (!active) throw new Error("no active connection");
 					runStartedAt.current = Date.now();
 					// Capture the input this request was built from, so the success
@@ -659,20 +715,11 @@ export function TranslationWorkspace() {
 					return { text: outcome.text, glossaryMatches };
 				},
 			}),
-		[
-			active,
-			caller,
-			store,
-			detected,
-			promptStyle,
-			customInstruction,
-			targetLang,
-			persistHistory,
-			sourceLang,
-			analytics.track,
-			reportSubmit,
-		],
+		[caller],
 	);
+
+	// Abandon pending and in-flight work when the workspace unmounts.
+	useEffect(() => () => controller.cancel(), [controller]);
 
 	// Feed the controller every time the input state changes.
 	useEffect(() => {
@@ -700,9 +747,24 @@ export function TranslationWorkspace() {
 		});
 		setSourceLang(next.source);
 		setTargetLang(next.target);
-		// Re-translate immediately in the new direction.
+		// Re-translate immediately in the new direction. The controller must see
+		// the swapped pair now: the state above reaches it only after the render.
+		controller.update({
+			text,
+			sourceLang: next.source,
+			targetLang: next.target,
+			connectionId: activeId,
+			composing: false,
+		});
 		controller.trigger();
-	}, [controller, sourceLang, targetLang, reportLanguageChange]);
+	}, [
+		controller,
+		text,
+		activeId,
+		sourceLang,
+		targetLang,
+		reportLanguageChange,
+	]);
 
 	const pickLanguage = useCallback(
 		(code: string) => {
