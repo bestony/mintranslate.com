@@ -61,6 +61,8 @@ describe("built-in workspace download activation", () => {
 	it("does not create before click, continues after completion, and retries failures", async () => {
 		const translator = fakeTranslator();
 		let rejectNext = false;
+		let firstDownload = true;
+		let resolveDownload: (() => void) | undefined;
 		let reportProgress: ((progress: number) => void) | undefined;
 		translator.create.mockImplementation(
 			async (
@@ -71,6 +73,12 @@ describe("built-in workspace download activation", () => {
 				reportProgress = options.onProgress;
 				reportProgress?.(0.4);
 				if (rejectNext) throw new Error("download failed");
+				if (firstDownload) {
+					firstDownload = false;
+					await new Promise<void>((resolve) => {
+						resolveDownload = resolve;
+					});
+				}
 			},
 		);
 
@@ -104,6 +112,15 @@ describe("built-in workspace download activation", () => {
 			expect.objectContaining({ onProgress: expect.any(Function) }),
 		);
 		expect(reportProgress).toBeTypeOf("function");
+		expect(container.querySelector("progress")).not.toBeNull();
+		expect(
+			container.querySelector<HTMLProgressElement>("progress")?.value,
+		).toBe(0.4);
+		expect(resolveDownload).toBeTypeOf("function");
+		await act(async () => {
+			resolveDownload?.();
+			await Promise.resolve();
+		});
 		expect(continued).toBe(1);
 
 		rejectNext = true;
