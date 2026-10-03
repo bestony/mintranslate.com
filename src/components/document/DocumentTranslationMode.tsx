@@ -42,9 +42,14 @@ import {
 import { DocumentDropZone } from "./DocumentDropZone";
 import { DocumentResultView } from "./DocumentResultView";
 import {
+	bindDocumentRunTask,
 	canDeleteDocumentTask,
 	canStartDocumentRun,
+	type DocumentRunReservation,
 	hasResumableSource,
+	ownsDocumentRun,
+	reserveDocumentRun,
+	shouldDisableDeleteDocumentTask,
 	shouldDisableResume,
 } from "./task-actions";
 
@@ -115,10 +120,7 @@ async function sourceAvailabilityFor(
 	const available = await Promise.all(
 		entries.map(async (entry) => {
 			try {
-				return [
-					entry.id,
-					(await currentStore.loadSource(entry.id)) !== undefined,
-				] as const;
+				return [entry.id, await currentStore.hasSource(entry.id)] as const;
 			} catch (error) {
 				logger.warn("document.ui.source-check-failed", {
 					reason: error instanceof Error ? error.message : String(error),
@@ -155,7 +157,42 @@ export function DocumentTranslationMode({
 	const [downloadName, setDownloadName] = useState<string | undefined>(
 		undefined,
 	);
-	const abortRef = useRef<AbortController | undefined>(undefined);
+	const runReservationRef = useRef<DocumentRunReservation | undefined>(
+		undefined,
+	);
+	const [runReservation, setRunReservation] = useState<
+		DocumentRunReservation | undefined
+	>(undefined);
+
+	const reserveRun = useCallback((taskId?: string) => {
+		const reservation = reserveDocumentRun(
+			runReservationRef.current,
+			new AbortController(),
+			taskId,
+		);
+		if (reservation === undefined) return undefined;
+		runReservationRef.current = reservation;
+		setRunReservation(reservation);
+		return reservation;
+	}, []);
+
+	const bindRunTask = useCallback(
+		(reservation: DocumentRunReservation, taskId: string) => {
+			if (!ownsDocumentRun(runReservationRef.current, reservation))
+				return reservation;
+			const bound = bindDocumentRunTask(reservation, taskId);
+			runReservationRef.current = bound;
+			setRunReservation(bound);
+			return bound;
+		},
+		[],
+	);
+
+	const releaseRun = useCallback((reservation: DocumentRunReservation) => {
+		if (!ownsDocumentRun(runReservationRef.current, reservation)) return;
+		runReservationRef.current = undefined;
+		setRunReservation(undefined);
+	}, []);
 
 	useEffect(() => {
 		let disposed = false;
@@ -167,12 +204,14 @@ export function DocumentTranslationMode({
 				const listed = await opened.list();
 				if (disposed) return;
 				setTasks(listed);
-				setSourceAvailability(await sourceAvailabilityFor(opened, listed));
+				setSourceAvailability(
+					await sourceAvailabilityFor(opened, listed.slice(0, 5)),
+				);
 			}
 		});
 		return () => {
 			disposed = true;
-			abortRef.current?.abort();
+			runReservationRef.current?.controller.abort();
 		};
 	}, []);
 
@@ -192,7 +231,9 @@ export function DocumentTranslationMode({
 	const refreshTasks = useCallback(async (currentStore: DocumentTaskStore) => {
 		const listed = await currentStore.list();
 		setTasks(listed);
-		setSourceAvailability(await sourceAvailabilityFor(currentStore, listed));
+		setSourceAvailability(
+			await sourceAvailabilityFor(currentStore, listed.slice(0, 5)),
+		);
 	}, []);
 
 	const deliver = useCallback(
@@ -237,14 +278,18 @@ export function DocumentTranslationMode({
 			source: Uint8Array,
 			parsedPdf: PdfExtraction | undefined,
 			currentStore: DocumentTaskStore,
+			reservation: DocumentRunReservation,
 		) => {
-			if (!canStartDocumentRun(abortRef.current)) return;
+			if (
+				canStartDocumentRun(runReservationRef.current) ||
+				!ownsDocumentRun(runReservationRef.current, reservation)
+			)
+				return;
 			if (connection === undefined) {
 				setNotice("还没有可用的连接。请先在设置页配置一个支持文本输入的模型。");
 				return;
 			}
-			const controller = new AbortController();
-			abortRef.current = controller;
+			const controller = reservation.controller;
 			setTask(record);
 			setNotice(undefined);
 			try {
@@ -309,7 +354,8 @@ export function DocumentTranslationMode({
 				const attribution = attributeFailure({ error });
 				setNotice(attribution.summary);
 			} finally {
-				if (abortRef.current === controller) abortRef.current = undefined;
+				// The submit or resume owner releases the reservation in its outer
+				// finally, including setup failures before this function is called.
 			}
 		},
 		[analytics, apiKey, connection, customInstruction, deliver, refreshTasks],
@@ -317,31 +363,35 @@ export function DocumentTranslationMode({
 
 	const submit = useCallback(
 		async (file: File) => {
+			const reserved = reserveRun();
+			if (reserved === undefined) return;
+			let reservation = reserved;
 			let storageWriteStarted = false;
-			clearDownload();
-			setNotice(undefined);
-			setEmpty(false);
-			setFormat(undefined);
-			setTask(undefined);
-			const validation = validateDocument({
-				name: file.name,
-				type: file.type,
-				size: file.size,
-			});
-			if (!validation.ok) {
-				setNotice(validation.reason);
-				return;
-			}
-
-			const currentStore = storeRef.current ?? (await openDocumentTaskStore());
-			if (currentStore === undefined) {
-				setNotice("本地任务存储不可用，无法保存进度。");
-				return;
-			}
-			storeRef.current = currentStore;
-			setStore(currentStore);
-
 			try {
+				clearDownload();
+				setNotice(undefined);
+				setEmpty(false);
+				setFormat(undefined);
+				setTask(undefined);
+				const validation = validateDocument({
+					name: file.name,
+					type: file.type,
+					size: file.size,
+				});
+				if (!validation.ok) {
+					setNotice(validation.reason);
+					return;
+				}
+
+				const currentStore =
+					storeRef.current ?? (await openDocumentTaskStore());
+				if (currentStore === undefined) {
+					setNotice("本地任务存储不可用，无法保存进度。");
+					return;
+				}
+				storeRef.current = currentStore;
+				setStore(currentStore);
+
 				const bytes = new Uint8Array(await file.arrayBuffer());
 				const parsed = await parseInput(bytes, validation.format);
 				setFormat(parsed.format);
@@ -369,6 +419,7 @@ export function DocumentTranslationMode({
 					chunks: parsed.chunks.map((chunk) => ({ chunk })),
 					now: Date.now(),
 				});
+				reservation = bindRunTask(reservation, created.id);
 				storageWriteStarted = true;
 				await currentStore.dropStaleSources(created.id);
 				await currentStore.save(created);
@@ -385,7 +436,7 @@ export function DocumentTranslationMode({
 					),
 					input_kind: "document",
 				});
-				await runTask(created, bytes, parsed.pdf, currentStore);
+				await runTask(created, bytes, parsed.pdf, currentStore, reservation);
 			} catch (error) {
 				logger.warn("document.ui.submit-failed", {
 					phase: storageWriteStarted ? "storage" : "parse",
@@ -396,12 +447,17 @@ export function DocumentTranslationMode({
 						? "本地任务存储写入失败，无法保存进度，请重试。"
 						: unparsableReason(file.name),
 				);
+			} finally {
+				releaseRun(reservation);
 			}
 		},
 		[
 			analytics,
 			clearDownload,
+			bindRunTask,
+			releaseRun,
 			refreshTasks,
+			reserveRun,
 			runTask,
 			sourceLang,
 			styleId,
@@ -411,45 +467,59 @@ export function DocumentTranslationMode({
 
 	const resume = useCallback(
 		async (candidate: DocumentTaskRecord) => {
-			const currentStore = storeRef.current;
-			if (currentStore === undefined) {
-				setNotice("本地任务存储不可用，无法续传。");
-				return;
-			}
-			const source = await currentStore.loadSource(candidate.id);
-			if (source === undefined) {
-				setNotice("原文件已清理，无法续传；请重新上传。");
-				return;
-			}
-			const current = resetResultsForContext(
-				candidate,
-				{ sourceLang, targetLang, styleId },
-				Date.now(),
-			);
-			if (current !== candidate) {
-				await currentStore.save(current);
-				await refreshTasks(currentStore);
-			}
-			setFormat(current.format);
-			setEmpty(false);
-			setNotice(undefined);
-			let parsedPdf: PdfExtraction | undefined;
-			if (current.format === "pdf") {
-				try {
-					const parsed = await parseInput(source, "pdf");
-					parsedPdf = parsed.pdf;
-				} catch {
-					setNotice(unparsableReason(current.fileName));
+			const reservation = reserveRun(candidate.id);
+			if (reservation === undefined) return;
+			try {
+				const currentStore = storeRef.current;
+				if (currentStore === undefined) {
+					setNotice("本地任务存储不可用，无法续传。");
 					return;
 				}
+				const source = await currentStore.loadSource(candidate.id);
+				if (source === undefined) {
+					setNotice("原文件已清理，无法续传；请重新上传。");
+					return;
+				}
+				const current = resetResultsForContext(
+					candidate,
+					{ sourceLang, targetLang, styleId },
+					Date.now(),
+				);
+				if (current !== candidate) {
+					await currentStore.save(current);
+					await refreshTasks(currentStore);
+				}
+				setFormat(current.format);
+				setEmpty(false);
+				setNotice(undefined);
+				let parsedPdf: PdfExtraction | undefined;
+				if (current.format === "pdf") {
+					try {
+						const parsed = await parseInput(source, "pdf");
+						parsedPdf = parsed.pdf;
+					} catch {
+						setNotice(unparsableReason(current.fileName));
+						return;
+					}
+				}
+				await runTask(current, source, parsedPdf, currentStore, reservation);
+			} finally {
+				releaseRun(reservation);
 			}
-			await runTask(current, source, parsedPdf, currentStore);
 		},
-		[refreshTasks, runTask, sourceLang, styleId, targetLang],
+		[
+			refreshTasks,
+			releaseRun,
+			reserveRun,
+			runTask,
+			sourceLang,
+			styleId,
+			targetLang,
+		],
 	);
 
 	const cancel = useCallback(() => {
-		abortRef.current?.abort();
+		runReservationRef.current?.controller.abort();
 	}, []);
 
 	const remove = useCallback(
@@ -469,7 +539,7 @@ export function DocumentTranslationMode({
 	return (
 		<section className="flex min-h-0 flex-col" aria-label="文档翻译">
 			<DocumentDropZone
-				disabled={activeTask}
+				disabled={runReservation !== undefined}
 				onAccept={(file) => void submit(file)}
 				onReject={setNotice}
 			/>
@@ -545,7 +615,7 @@ export function DocumentTranslationMode({
 										<button
 											type="button"
 											className="nav-link min-h-11"
-											disabled={shouldDisableResume(activeTask)}
+											disabled={shouldDisableResume(runReservation)}
 											onClick={() => void resume(entry)}
 										>
 											继续
@@ -565,6 +635,10 @@ export function DocumentTranslationMode({
 										<button
 											type="button"
 											className="nav-link min-h-11"
+											disabled={shouldDisableDeleteDocumentTask(
+												entry,
+												runReservation,
+											)}
 											onClick={() => void remove(entry.id)}
 										>
 											删除

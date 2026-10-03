@@ -4,26 +4,61 @@ import { describe, expect, it } from "vitest";
 
 import type { DocumentTaskRecord } from "#/lib/document/model";
 import {
+	bindDocumentRunTask,
 	canDeleteDocumentTask,
 	canStartDocumentRun,
 	hasResumableSource,
+	reserveDocumentRun,
+	shouldDisableDeleteDocumentTask,
 	shouldDisableResume,
 } from "./task-actions";
 
 describe("document task controls", () => {
 	it("disables resume while a task is active", () => {
-		expect(shouldDisableResume(true)).toBe(true);
-		expect(shouldDisableResume(false)).toBe(false);
+		const reservation = reserveDocumentRun(undefined, new AbortController());
+		expect(shouldDisableResume(reservation)).toBe(true);
+		expect(shouldDisableResume(undefined)).toBe(false);
 	});
 
-	it("guards a second run while the current controller is active", () => {
+	it("keeps a cancelled reservation until its run finally unwinds", () => {
 		const controller = new AbortController();
+		const reservation = reserveDocumentRun(undefined, controller, "first");
 
 		expect(canStartDocumentRun(undefined)).toBe(true);
-		expect(canStartDocumentRun(controller)).toBe(false);
+		expect(canStartDocumentRun(reservation)).toBe(false);
 
 		controller.abort();
-		expect(canStartDocumentRun(controller)).toBe(true);
+		expect(canStartDocumentRun(reservation)).toBe(false);
+		expect(
+			reserveDocumentRun(reservation, new AbortController(), "second"),
+		).toBeUndefined();
+	});
+
+	it("rejects a second submit before it can save a task", () => {
+		const first = reserveDocumentRun(undefined, new AbortController());
+		const second = reserveDocumentRun(first, new AbortController());
+
+		expect(first).toBeDefined();
+		expect(second).toBeUndefined();
+	});
+
+	it("disables deletion for the task reserved during setup", () => {
+		const entry = { id: "resuming", state: "failed" } as DocumentTaskRecord;
+		const reservation = reserveDocumentRun(
+			undefined,
+			new AbortController(),
+			"resuming",
+		);
+
+		expect(shouldDisableDeleteDocumentTask(entry, reservation)).toBe(true);
+		expect(
+			shouldDisableDeleteDocumentTask(
+				entry,
+				reservation === undefined
+					? undefined
+					: bindDocumentRunTask(reservation, "another"),
+			),
+		).toBe(false);
 	});
 
 	it("allows deleting interrupted tasks but protects the active run", () => {
