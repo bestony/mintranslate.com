@@ -85,6 +85,19 @@ describe("offline capability rules", () => {
 		expect(unavailableReason("localData", false)).toBeUndefined();
 	});
 
+	it("keeps ready built-in translation available while offline", () => {
+		const builtin = { provider: "builtin-translator", status: "ok" };
+		expect(isFeatureAvailable("translation", false, builtin)).toBe(true);
+		expect(unavailableReason("translation", false, builtin)).toBeUndefined();
+		expect(requiresNetwork("translation", builtin)).toBe(false);
+	});
+
+	it("keeps external translation network-dependent while offline", () => {
+		const external = { provider: "openai", status: "ok" };
+		expect(isFeatureAvailable("translation", false, external)).toBe(false);
+		expect(unavailableReason("translation", false, external)).toContain("离线");
+	});
+
 	it("has a reason for every network feature", () => {
 		for (const kind of ["translation", "webpage", "modelList"] as const) {
 			expect(unavailableReason(kind, false), kind).toBeDefined();
