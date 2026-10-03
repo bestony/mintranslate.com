@@ -1,9 +1,12 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import tailwindcss from "@tailwindcss/vite";
 
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 
 import viteReact from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 import { normalizeBasePath, toViteBase } from "./src/lib/base-path";
@@ -32,6 +35,25 @@ const SERVICE_WORKER_FILENAME = "sw.js";
 
 /** Web app manifest output file name. */
 const MANIFEST_FILENAME = "manifest.webmanifest";
+
+/** Emit pdf.js's CMaps as same-origin, on-demand assets for offline extraction. */
+function pdfCMapAssets(): Plugin {
+	return {
+		name: "mintranslate-pdf-cmaps",
+		apply: "build",
+		generateBundle() {
+			const directory = resolve("node_modules/pdfjs-dist/cmaps");
+			for (const name of readdirSync(directory)) {
+				if (!name.endsWith(".bcmap")) continue;
+				this.emitFile({
+					type: "asset",
+					fileName: `pdfjs/cmaps/${name}`,
+					source: readFileSync(resolve(directory, name)),
+				});
+			}
+		},
+	};
+}
 
 /**
  * Web app manifest.
@@ -126,6 +148,7 @@ export default defineConfig({
 		tailwindcss(),
 		tanstackStart({ spa: { enabled: true } }),
 		viteReact(),
+		pdfCMapAssets(),
 		VitePWA({
 			registerType: "prompt",
 			// The application registers the worker itself, in the shell, so it can

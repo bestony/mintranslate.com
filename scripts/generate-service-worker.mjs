@@ -46,6 +46,9 @@ import { normalizeBasePath } from '../src/lib/base-path.ts'
 // absence itself is asserted by `scripts/check-helpers.mjs`.
 const GLOB_PATTERNS = [
 	'**/*.{js,css,html,png,svg,webmanifest}',
+	// PDF.js loads CMaps only for documents that need them, but they must be
+	// available from the same-origin cache when the app is offline.
+	'**/*.bcmap',
 	// The manifest is emitted by the PWA plugin under its own name.
 	'manifest.webmanifest',
 ]
