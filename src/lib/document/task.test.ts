@@ -363,6 +363,38 @@ describe("persistence", () => {
 		expect(await store.loadSource("s1")).toBeUndefined();
 	});
 
+	it("checks source presence without loading the stored bytes", async () => {
+		let countCalls = 0;
+		let getCalls = 0;
+		const database = {
+			transaction: () => {
+				const request = {
+					result: 1,
+					onerror: null as (() => void) | null,
+					onsuccess: null as (() => void) | null,
+				};
+				queueMicrotask(() => request.onsuccess?.());
+				return {
+					objectStore: () => ({
+						count: () => {
+							countCalls += 1;
+							return request;
+						},
+						get: () => {
+							getCalls += 1;
+							return request;
+						},
+					}),
+				};
+			},
+		} as unknown as IDBDatabase;
+		const store = createDocumentTaskStore(database);
+
+		expect(await store.hasSource("source-key")).toBe(true);
+		expect(countCalls).toBe(1);
+		expect(getCalls).toBe(0);
+	});
+
 	it("removing a task also removes its source", async () => {
 		// A file left behind would never be cleaned up by anything else.
 		const store = await openDocumentTaskStore();

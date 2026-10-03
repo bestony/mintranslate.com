@@ -106,6 +106,8 @@ export interface DocumentTaskStore {
 	remove(id: string): Promise<void>;
 	/** Store the original file for a task. */
 	saveSource(id: string, bytes: Uint8Array): Promise<void>;
+	/** Check whether the original file exists without loading its bytes. */
+	hasSource(id: string): Promise<boolean>;
 	loadSource(id: string): Promise<Uint8Array | undefined>;
 	/** Delete the original file, keeping the task record. */
 	dropSource(id: string): Promise<void>;
@@ -163,6 +165,15 @@ export function createDocumentTaskStore(
 			await withStore(SOURCES_STORE, "readwrite", (store) =>
 				store.put({ id, bytes }),
 			);
+		},
+
+		async hasSource(id) {
+			const count = await withStore<number>(
+				SOURCES_STORE,
+				"readonly",
+				(store) => store.count(id),
+			);
+			return count > 0;
 		},
 
 		async loadSource(id) {
