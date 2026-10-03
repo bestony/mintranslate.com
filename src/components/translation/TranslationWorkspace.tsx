@@ -212,6 +212,13 @@ function UnconfiguredConnectionLink() {
 	);
 }
 
+/** Whether the current channel can truthfully report glossary usage. */
+export function shouldShowGlossarySummary(
+	provider: string | undefined,
+): boolean {
+	return provider !== "builtin-translator";
+}
+
 export function TranslationWorkspace() {
 	const store = useConnectionStore();
 	const modifier = useModifierLabel();
@@ -1288,14 +1295,14 @@ export function TranslationWorkspace() {
 							className="mt-2 flex flex-wrap items-start gap-2 text-muted-foreground text-xs"
 							aria-live="polite"
 						>
-							{active?.provider !== "builtin-translator" && (
+							{shouldShowGlossarySummary(active?.provider) && (
 								<span>术语命中：{glossaryMatches.length} 条</span>
 							)}
 							{memoryReferenceCount > 0 && (
 								<span>参考译文：{memoryReferenceCount} 条</span>
 							)}
 							{memoryHit && <span>来自翻译记忆</span>}
-							{active?.provider !== "builtin-translator" &&
+							{shouldShowGlossarySummary(active?.provider) &&
 								glossaryMatches.length > 0 && (
 									<details className="basis-full">
 										<summary className="min-h-11 cursor-pointer py-2">

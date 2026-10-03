@@ -60,7 +60,10 @@ vi.mock("#/lib/translation/controller", async () => {
 import { act, Profiler } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { TranslationWorkspace } from "#/components/translation/TranslationWorkspace";
+import {
+	shouldShowGlossarySummary,
+	TranslationWorkspace,
+} from "#/components/translation/TranslationWorkspace";
 
 (
 	globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -90,6 +93,12 @@ function countCommit(): void {
 }
 
 describe("TranslationWorkspace render stability", () => {
+	it("hides glossary usage for the dedicated builtin translator", () => {
+		expect(shouldShowGlossarySummary("builtin-translator")).toBe(false);
+		expect(shouldShowGlossarySummary("builtin-multimodal")).toBe(true);
+		expect(shouldShowGlossarySummary("openai")).toBe(true);
+	});
+
 	let container: HTMLDivElement;
 
 	beforeEach(() => {
