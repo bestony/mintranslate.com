@@ -427,6 +427,39 @@ describe("retry", () => {
 });
 
 describe("request correlation", () => {
+	it("forwards browser-local detection metadata to the UI", async () => {
+		let detected: { code: string; confidence: number } | undefined;
+		const controller = createTranslationController({
+			run: async () => ({
+				text: "translated",
+				detectedLang: {
+					code: "en",
+					confidence: 0.91,
+					lowConfidence: false,
+				},
+			}),
+			callbacks: {
+				onStart: () => {},
+				onChunk: () => {},
+				onSuccess: (_id, _text, _ttft, metadata) => {
+					detected = metadata?.detectedLang;
+				},
+				onFailure: () => {},
+			},
+		});
+
+		controller.update(input());
+		controller.trigger();
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(detected).toEqual({
+			code: "en",
+			confidence: 0.91,
+			lowConfidence: false,
+		});
+	});
+
 	it("gives each request a distinct id", async () => {
 		const { controller, events } = harness();
 

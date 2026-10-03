@@ -55,6 +55,34 @@ function render(overrides: Record<string, unknown> = {}) {
 }
 
 describe("intranet guidance in the form", () => {
+	it("distinguishes the built-in text and multimodal channels", () => {
+		const textHtml = render({
+			id: "builtin-translator",
+			name: "内置翻译（仅文本）",
+			provider: "builtin-translator",
+			endpoint: "",
+			model: "",
+			status: "ok",
+		});
+		const multimodalHtml = render({
+			id: "builtin-multimodal",
+			name: "内置多模态（文本与图片）",
+			provider: "builtin-multimodal",
+			endpoint: "",
+			model: "",
+			status: "ok",
+		});
+
+		expect(textHtml).toContain("仅支持文本");
+		expect(textHtml).toContain("不应用术语表与翻译风格");
+		expect(textHtml).not.toContain('id="connection-endpoint"');
+		expect(textHtml).not.toContain("测试连接");
+		expect(multimodalHtml).toContain("支持文本与图片");
+		expect(multimodalHtml).toContain("可应用术语表与翻译风格");
+		expect(multimodalHtml).toContain("Prompt API 仅支持英语");
+		expect(multimodalHtml).not.toContain('id="connection-api-key"');
+	});
+
 	it("shows the conditions for a self-hosted endpoint", () => {
 		const html = render();
 		// The heading is what makes it visible this is pre-flight guidance rather
