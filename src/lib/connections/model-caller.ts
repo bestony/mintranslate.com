@@ -352,10 +352,12 @@ async function performCall(
 				? await builtinLanguageModel.promptStreaming(input, {
 						signal,
 						responseConstraint: request.responseConstraint,
+						targetLanguage: request.targetLanguage,
 					})
 				: await builtinLanguageModel.prompt(input, {
 						signal,
 						responseConstraint: request.responseConstraint,
+						targetLanguage: request.targetLanguage,
 					});
 			return { text };
 		}

@@ -16,6 +16,7 @@ import {
 	queryTranslatorAvailability,
 } from "./capability";
 import { fromBuiltinCode, toBuiltinCode } from "./languages";
+import { monitorBuiltinDownload } from "./monitor";
 
 /** A detected source language returned by the local detector. */
 export interface BuiltinDetectedLanguage {
@@ -38,8 +39,13 @@ export interface BuiltinTranslateOptions {
 /** Error raised when a request needs an explicit model activation. */
 export class BuiltinTranslatorNotReadyError extends Error {
 	readonly readiness: BuiltinReadiness;
+	readonly sourceLanguage?: string;
+	readonly targetLanguage?: string;
 
-	constructor(readiness: BuiltinReadiness) {
+	constructor(
+		readiness: BuiltinReadiness,
+		pair?: { readonly sourceLanguage: string; readonly targetLanguage: string },
+	) {
 		super(
 			readiness.state === "downloadable"
 				? "内置翻译模型需要用户点击后下载。"
@@ -49,6 +55,8 @@ export class BuiltinTranslatorNotReadyError extends Error {
 		);
 		this.name = "BuiltinTranslatorNotReadyError";
 		this.readiness = readiness;
+		this.sourceLanguage = pair?.sourceLanguage;
+		this.targetLanguage = pair?.targetLanguage;
 	}
 }
 
@@ -78,7 +86,10 @@ export interface BuiltinTranslatorClient {
 	create(
 		sourceLanguage: string,
 		targetLanguage: string,
-		options?: { readonly onProgress?: DownloadProgress },
+		options?: {
+			readonly onProgress?: DownloadProgress;
+			readonly signal?: AbortSignal;
+		},
 	): Promise<void>;
 	translate(
 		sourceLanguage: string,
@@ -113,17 +124,6 @@ interface TranslatorEntry {
 
 interface DetectorEntry {
 	readonly session: BuiltinLanguageDetectorSession;
-}
-
-/** Translate a Chrome monitor event into a numeric progress value. */
-function progressFromEvent(event: unknown): number | undefined {
-	if (typeof event === "number") return event;
-	if (typeof event !== "object" || event === null) return undefined;
-	const value = (event as { readonly downloadProgress?: unknown })
-		.downloadProgress;
-	return typeof value === "number" && Number.isFinite(value)
-		? Math.max(0, Math.min(1, value))
-		: undefined;
 }
 
 function abortIfNeeded(signal: AbortSignal | undefined): void {
@@ -164,14 +164,20 @@ export function createBuiltinTranslatorClient(
 		if (source === undefined || target === undefined || api === undefined) {
 			return { state: "unavailable", reason: "browser" };
 		}
+		if (translators.has(key(sourceLanguage, targetLanguage)))
+			return { state: "available" };
 		return queryTranslatorAvailability(source, target, { api });
 	}
 
 	async function create(
 		sourceLanguage: string,
 		targetLanguage: string,
-		createOptions: { readonly onProgress?: DownloadProgress } = {},
+		createOptions: {
+			readonly onProgress?: DownloadProgress;
+			readonly signal?: AbortSignal;
+		} = {},
 	): Promise<void> {
+		abortIfNeeded(createOptions.signal);
 		const source = toBuiltinCode(sourceLanguage);
 		const target = toBuiltinCode(targetLanguage);
 		if (source === undefined || target === undefined || api === undefined) {
@@ -181,17 +187,21 @@ export function createBuiltinTranslatorClient(
 			});
 		}
 
-		const monitor = (event: unknown) => {
-			const progress = progressFromEvent(event);
-			if (progress === undefined) return;
-			createOptions.onProgress?.(progress);
-			options.onDownloadProgress?.(progress);
-		};
 		const session = await api.create({
 			sourceLanguage: source,
 			targetLanguage: target,
-			monitor,
+			...signalOptions(createOptions.signal),
+			monitor: (monitor) =>
+				monitorBuiltinDownload(monitor, (progress) => {
+					if (createOptions.signal?.aborted) return;
+					createOptions.onProgress?.(progress);
+					options.onDownloadProgress?.(progress);
+				}),
 		});
+		if (createOptions.signal?.aborted) {
+			session.close?.();
+			throw new BuiltinTranslationCancelledError();
+		}
 		translators.set(key(sourceLanguage, targetLanguage), {
 			sourceLanguage,
 			targetLanguage,
@@ -202,14 +212,19 @@ export function createBuiltinTranslatorClient(
 	async function ensureSession(
 		sourceLanguage: string,
 		targetLanguage: string,
+		signal?: AbortSignal,
 	): Promise<TranslatorEntry> {
 		const existing = translators.get(key(sourceLanguage, targetLanguage));
 		if (existing) return existing;
 
 		const readiness = await availability(sourceLanguage, targetLanguage);
+		abortIfNeeded(signal);
 		if (readiness.state !== "available")
-			throw new BuiltinTranslatorNotReadyError(readiness);
-		await create(sourceLanguage, targetLanguage);
+			throw new BuiltinTranslatorNotReadyError(readiness, {
+				sourceLanguage,
+				targetLanguage,
+			});
+		await create(sourceLanguage, targetLanguage, { signal });
 		const created = translators.get(key(sourceLanguage, targetLanguage));
 		if (created === undefined)
 			throw new BuiltinTranslatorNotReadyError({
@@ -272,7 +287,12 @@ export function createBuiltinTranslatorClient(
 			detectedLang = await detect(input, { signal: translateOptions.signal });
 			concreteSource = detectedLang.code;
 		}
-		const entry = await ensureSession(concreteSource, targetLanguage);
+		const entry = await ensureSession(
+			concreteSource,
+			targetLanguage,
+			translateOptions.signal,
+		);
+		abortIfNeeded(translateOptions.signal);
 		try {
 			const text = await entry.session.translate(
 				input,
@@ -303,7 +323,12 @@ export function createBuiltinTranslatorClient(
 			detectedLang = await detect(input, { signal: translateOptions.signal });
 			concreteSource = detectedLang.code;
 		}
-		const entry = await ensureSession(concreteSource, targetLanguage);
+		const entry = await ensureSession(
+			concreteSource,
+			targetLanguage,
+			translateOptions.signal,
+		);
+		abortIfNeeded(translateOptions.signal);
 		let text = "";
 		try {
 			for await (const chunk of entry.session.translateStreaming(
@@ -335,6 +360,3 @@ export function createBuiltinTranslatorClient(
 		},
 	};
 }
-
-/** Short factory alias used by call sites that mirror the browser API name. */
-export const createTranslator = createBuiltinTranslatorClient;

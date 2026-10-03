@@ -62,12 +62,6 @@ export function isPromptApiLanguage(code: string): boolean {
 	return PROMPT_API_LANGUAGES.has(code);
 }
 
-/** Compatibility name for callers that describe this as a support check. */
-export const isPromptLanguageSupported = isPromptApiLanguage;
-
-/** Compatibility name for callers that use the shorter API terminology. */
-export const isPromptLanguage = isPromptApiLanguage;
-
 /** Return the supported Prompt API subset as an immutable array. */
 export function promptApiLanguages(): readonly PromptApiLanguageCode[] {
 	return PROMPT_API_LANGUAGE_CODES;

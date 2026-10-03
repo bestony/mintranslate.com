@@ -13,6 +13,7 @@ import {
 	type BuiltinReadiness,
 	queryLanguageModelAvailability,
 } from "./capability";
+import { monitorBuiltinDownload } from "./monitor";
 
 /** A processed image supplied to Prompt API. */
 export interface BuiltinModelImage {
@@ -30,19 +31,25 @@ export interface BuiltinModelPromptInput {
 export interface BuiltinLanguageModelCreateOptions {
 	readonly targetLanguage?: string;
 	readonly onProgress?: (progress: number) => void;
+	readonly signal?: AbortSignal;
 }
 
 /** Prompt invocation options. */
 export interface BuiltinLanguageModelPromptOptions {
 	readonly signal?: AbortSignal;
 	readonly responseConstraint?: unknown;
+	readonly targetLanguage?: string;
 }
 
 /** Error raised when a session needs explicit activation or is unavailable. */
 export class BuiltinLanguageModelNotReadyError extends Error {
 	readonly readiness: BuiltinReadiness;
+	readonly targetLanguage?: string;
 
-	constructor(readiness: BuiltinReadiness) {
+	constructor(
+		readiness: BuiltinReadiness,
+		options?: { readonly targetLanguage: string },
+	) {
 		super(
 			readiness.state === "downloadable"
 				? "内置多模态模型需要用户点击后下载。"
@@ -52,6 +59,7 @@ export class BuiltinLanguageModelNotReadyError extends Error {
 		);
 		this.name = "BuiltinLanguageModelNotReadyError";
 		this.readiness = readiness;
+		this.targetLanguage = options?.targetLanguage;
 	}
 }
 
@@ -69,16 +77,6 @@ export interface BuiltinLanguageModelClient {
 		options?: BuiltinLanguageModelPromptOptions,
 	): Promise<string>;
 	destroy(): void;
-}
-
-function progressFromEvent(event: unknown): number | undefined {
-	if (typeof event === "number") return event;
-	if (typeof event !== "object" || event === null) return undefined;
-	const value = (event as { readonly downloadProgress?: unknown })
-		.downloadProgress;
-	return typeof value === "number" && Number.isFinite(value)
-		? Math.max(0, Math.min(1, value))
-		: undefined;
 }
 
 function base64Bytes(value: string): Uint8Array {
@@ -137,12 +135,7 @@ export function createBuiltinLanguageModelClient(
 				reason: "browser",
 			});
 
-		const monitor = (event: unknown) => {
-			const progress = progressFromEvent(event);
-			if (progress === undefined) return;
-			createOptions.onProgress?.(progress);
-			options.onDownloadProgress?.(progress);
-		};
+		createOptions.signal?.throwIfAborted();
 		const created = await api.create({
 			expectedInputs: options.expectedInputs ?? [
 				{ type: "text", languages: ["en", "ja", "es", "de", "fr"] },
@@ -159,17 +152,37 @@ export function createBuiltinLanguageModelClient(
 					},
 				],
 			}),
-			monitor,
+			...(createOptions.signal !== undefined && {
+				signal: createOptions.signal,
+			}),
+			monitor: (monitor: import("./capability").BuiltinCreateMonitor) =>
+				monitorBuiltinDownload(monitor, (progress) => {
+					if (createOptions.signal?.aborted) return;
+					createOptions.onProgress?.(progress);
+					options.onDownloadProgress?.(progress);
+				}),
 		});
+		if (createOptions.signal?.aborted) {
+			created.destroy?.();
+			createOptions.signal.throwIfAborted();
+		}
+		session?.destroy?.();
 		session = created;
 	}
 
-	async function ensureSession(): Promise<BuiltinLanguageModelSession> {
+	async function ensureSession(
+		promptOptions: BuiltinLanguageModelPromptOptions,
+	): Promise<BuiltinLanguageModelSession> {
+		promptOptions.signal?.throwIfAborted();
 		if (session !== undefined) return session;
-		const readiness = await availability();
+		const targetLanguage = promptOptions.targetLanguage ?? "en";
+		const readiness = await availability(targetLanguage);
+		promptOptions.signal?.throwIfAborted();
 		if (readiness.state !== "available")
-			throw new BuiltinLanguageModelNotReadyError(readiness);
-		await create();
+			throw new BuiltinLanguageModelNotReadyError(readiness, {
+				targetLanguage,
+			});
+		await create({ targetLanguage, signal: promptOptions.signal });
 		if (session === undefined)
 			throw new BuiltinLanguageModelNotReadyError({
 				state: "unavailable",
@@ -182,14 +195,14 @@ export function createBuiltinLanguageModelClient(
 		availability,
 		create,
 		async prompt(input, promptOptions = {}) {
-			const current = await ensureSession();
+			const current = await ensureSession(promptOptions);
 			return current.prompt(promptInput(input), {
 				signal: promptOptions.signal,
 				responseConstraint: promptOptions.responseConstraint,
 			});
 		},
 		async promptStreaming(input, promptOptions = {}) {
-			const current = await ensureSession();
+			const current = await ensureSession(promptOptions);
 			let text = "";
 			for await (const chunk of current.promptStreaming(promptInput(input), {
 				signal: promptOptions.signal,
@@ -205,6 +218,3 @@ export function createBuiltinLanguageModelClient(
 		},
 	};
 }
-
-/** Short factory alias for callers that mirror the browser API name. */
-export const createLanguageModel = createBuiltinLanguageModelClient;

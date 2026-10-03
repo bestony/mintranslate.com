@@ -31,6 +31,17 @@ export interface BuiltinReadiness {
 	readonly reason?: BuiltinUnavailableReason;
 }
 
+/** Creation monitor supplied by Chrome to the create() callback. */
+export interface BuiltinCreateMonitor {
+	addEventListener(
+		type: "downloadprogress",
+		listener: (event: {
+			readonly loaded: number;
+			readonly total?: number;
+		}) => void,
+	): void;
+}
+
 /** Minimum Translator session surface used by this application. */
 export interface BuiltinTranslatorSession {
 	translate(
@@ -53,7 +64,8 @@ export interface BuiltinTranslatorApi {
 	create(options: {
 		readonly sourceLanguage: string;
 		readonly targetLanguage: string;
-		readonly monitor?: (event: { readonly downloadProgress?: number }) => void;
+		readonly monitor?: (monitor: BuiltinCreateMonitor) => void;
+		readonly signal?: AbortSignal;
 	}): Promise<BuiltinTranslatorSession> | BuiltinTranslatorSession;
 }
 
@@ -134,9 +146,6 @@ export function detectBuiltinCapabilities(
 		languageModel: scope.LanguageModel !== undefined,
 	};
 }
-
-/** Compatibility alias used by settings and store code. */
-export const detectCapabilities = detectBuiltinCapabilities;
 
 /** Normalize a browser availability value; unknown values are unavailable. */
 export function normalizeAvailability(value: unknown): BuiltinAvailability {
@@ -263,6 +272,3 @@ export function deriveBuiltinConnectionStatus(
 		statusDetail: details[normalized.reason ?? "unknown"],
 	};
 }
-
-/** Compatibility alias for code that names this operation as a derivation. */
-export const connectionStatusFromReadiness = deriveBuiltinConnectionStatus;

@@ -29,12 +29,16 @@ function session(
 
 describe("built-in Translator client", () => {
 	it("creates with mapped language codes and forwards progress", async () => {
-		let monitor: ((event: { downloadProgress?: number }) => void) | undefined;
+		let progressEvent: ((event: { loaded: number }) => void) | undefined;
 		const created = session();
 		const api: BuiltinTranslatorApi = {
 			availability: vi.fn().mockResolvedValue("downloadable"),
 			create: vi.fn().mockImplementation((options) => {
-				monitor = options.monitor;
+				options.monitor?.({
+					addEventListener: (_type: string, listener: typeof progressEvent) => {
+						progressEvent = listener;
+					},
+				});
 				return created;
 			}),
 		};
@@ -44,7 +48,7 @@ describe("built-in Translator client", () => {
 		await client.create("zh-Hans", "en", {
 			onProgress: (value) => progress.push(value),
 		});
-		monitor?.({ downloadProgress: 0.4 });
+		progressEvent?.({ loaded: 0.4 });
 		expect(api.create).toHaveBeenCalledWith(
 			expect.objectContaining({ sourceLanguage: "zh", targetLanguage: "en" }),
 		);

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type {
+	BuiltinCreateMonitor,
 	BuiltinLanguageModelApi,
 	BuiltinLanguageModelSession,
 } from "./capability";
@@ -25,11 +26,15 @@ function session(): BuiltinLanguageModelSession {
 
 describe("built-in LanguageModel client", () => {
 	it("creates with expected inputs and outputs and forwards monitor progress", async () => {
-		let monitor: ((event: { downloadProgress?: number }) => void) | undefined;
+		let progressEvent: ((event: { loaded: number }) => void) | undefined;
 		const api: BuiltinLanguageModelApi = {
 			availability: vi.fn().mockResolvedValue("downloadable"),
 			create: vi.fn().mockImplementation((options) => {
-				monitor = options.monitor as typeof monitor;
+				(options.monitor as (monitor: BuiltinCreateMonitor) => void)?.({
+					addEventListener: (_type: string, listener) => {
+						progressEvent = listener;
+					},
+				});
 				return session();
 			}),
 		};
@@ -40,7 +45,7 @@ describe("built-in LanguageModel client", () => {
 			targetLanguage: "en",
 			onProgress: (value) => progress.push(value),
 		});
-		monitor?.({ downloadProgress: 0.5 });
+		progressEvent?.({ loaded: 0.5 });
 		expect(api.create).toHaveBeenCalledWith(
 			expect.objectContaining({
 				expectedInputs: expect.arrayContaining([
