@@ -114,8 +114,9 @@ function useModifierLabel(): string {
 /** One connection's limiter set, shared across the component's lifetime. */
 const limiters = createKeyedLimiters(2);
 
-/** Chip sizes. */
-const CHIP = "min-h-11 shrink-0 rounded-sm px-4 text-xs";
+/** Chip sizes and alignment. */
+const CHIP =
+	"inline-flex items-center justify-center min-h-11 shrink-0 rounded-sm px-4 text-xs";
 
 /**
  * Quick entries shown below the breakpoint.
@@ -164,15 +165,41 @@ function MobileSwapButton({
 /**
  * Language chip classes.
  *
+ * Every chip is an inline-flex container centered on both axes so text sits
+ * vertically centered regardless of platform or screen size. Entries hidden
+ * below md omit the base `inline-flex` to avoid overriding `hidden` on mobile.
+ *
  * The selected chip fills with the action colour and uses white text — the same
  * pair as a primary button, so "this is the active choice" reads the same way
  * everywhere. A tinted background was not enough: `bg-primary/10` on a white
  * surface is visually near-identical to an unselected chip's plain white.
  */
-function chipClass(selected: boolean): string {
+function chipClass(selected: boolean, mobileHidden = false): string {
+	const base = mobileHidden
+		? "hidden md:inline-flex items-center justify-center min-h-11 shrink-0 rounded-sm px-4 text-xs"
+		: CHIP;
 	return selected
-		? `${CHIP} border border-transparent bg-primary-strong text-primary-foreground`
-		: `${CHIP} border border-border`;
+		? `${base} border border-transparent bg-primary-strong text-primary-foreground`
+		: `${base} border border-border`;
+}
+
+/**
+ * Prominent link to settings when no model connection is configured.
+ *
+ * Rendered in both text and image mode toolbars. Styled as a warning button
+ * within the design palette, using a glyph and label so state is not conveyed
+ * by colour alone.
+ */
+function UnconfiguredConnectionLink() {
+	return (
+		<Link
+			to="/settings"
+			className="inline-flex min-h-11 items-center gap-2 rounded-sm bg-primary-strong px-4 text-primary-foreground text-xs"
+		>
+			<span aria-hidden="true">⚠</span>
+			<span>未配置模型连接 · 去设置</span>
+		</Link>
+	);
 }
 
 export function TranslationWorkspace() {
@@ -833,12 +860,7 @@ export function TranslationWorkspace() {
 								使用中：{active.name}
 							</span>
 						) : (
-							<Link
-								to="/settings"
-								className="nav-link min-h-11 inline-flex items-center text-xs underline"
-							>
-								未配置连接 — 去设置
-							</Link>
+							<UnconfiguredConnectionLink />
 						)}
 					</div>
 
@@ -870,10 +892,9 @@ export function TranslationWorkspace() {
 	return (
 		<div className="flex min-h-0 flex-1 flex-col">
 			{/* Layout: single column on mobile, a three-column grid (source / swap axis /
-			    target) from md up. The rows are left to stretch on purpose: the panels
-			    size themselves from the viewport, and stretching is what lets them use
-			    the free height instead of leaving it blank at the bottom. */}
-			<div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:grid md:min-h-0 md:grid-cols-[1fr_auto_1fr] md:items-stretch md:gap-x-6 md:gap-y-4 md:p-6">
+			    target) from md up. The toolbar row sizes to content (auto), and the
+			    panels take the remaining height (1fr) so they fill the viewport. */}
+			<div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 flex-col gap-4 p-4 md:grid md:min-h-0 md:grid-cols-[1fr_auto_1fr] md:grid-rows-[auto_1fr] md:items-stretch md:gap-x-6 md:gap-y-4 md:p-6">
 				<div className="md:col-span-3">
 					{/* The toolbar carries only what the workspace needs at a glance.
 				    Shortcut hints moved to the footer and a tooltip, and the install
@@ -909,13 +930,7 @@ export function TranslationWorkspace() {
 								使用中：{active.name}
 							</span>
 						) : (
-							<Link
-								to="/settings"
-								// grid-exception: 4px icon-to-text gap
-								className="nav-link min-h-11 inline-flex items-center gap-1 text-xs underline"
-							>
-								未配置连接 — 去设置
-							</Link>
+							<UnconfiguredConnectionLink />
 						)}
 					</div>
 				</div>
@@ -945,9 +960,10 @@ export function TranslationWorkspace() {
 								type="button"
 								aria-pressed={sourceLang === code}
 								aria-current={sourceLang === code ? "true" : undefined}
-								className={`${chipClass(sourceLang === code)} ${
-									index >= MOBILE_CHIP_COUNT ? "hidden md:inline-flex" : ""
-								}`}
+								className={chipClass(
+									sourceLang === code,
+									index >= MOBILE_CHIP_COUNT,
+								)}
 								onClick={() => {
 									setSourceLang(code);
 									setDetected(undefined);
@@ -1080,9 +1096,10 @@ export function TranslationWorkspace() {
 								type="button"
 								aria-pressed={targetLang === code}
 								aria-current={targetLang === code ? "true" : undefined}
-								className={`${chipClass(targetLang === code)} ${
-									index >= MOBILE_CHIP_COUNT ? "hidden md:inline-flex" : ""
-								}`}
+								className={chipClass(
+									targetLang === code,
+									index >= MOBILE_CHIP_COUNT,
+								)}
 								onClick={() => {
 									const resolved = resolveTargetConflict(
 										{ source: sourceLang, target: code },

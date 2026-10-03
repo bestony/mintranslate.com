@@ -174,6 +174,13 @@ describe("panels adapt to the viewport", () => {
 		const minimums = html.match(/min-h-60/g) ?? [];
 		expect(minimums.length).toBeGreaterThanOrEqual(2);
 	});
+
+	it("sizes the desktop toolbar row to content so panels take the remaining height", () => {
+		const html = workspaceHtml();
+		// md:grid-rows-[auto_1fr] ensures the toolbar row sizes to content (auto)
+		// without an abnormal empty vertical gap, and the panel row takes the rest (1fr).
+		expect(html).toContain("md:grid-rows-[auto_1fr]");
+	});
 });
 
 describe("the top bar carries only what the task needs", () => {
@@ -187,12 +194,30 @@ describe("the top bar carries only what the task needs", () => {
 		expect(html).not.toContain("安装到桌面");
 	});
 
-	it("makes the unconfigured state an actionable link", () => {
+	it("makes the unconfigured state an actionable warning button link", () => {
 		const html = workspaceHtml();
 		// Unconfigured is the initial state, so this is the branch that renders.
-		expect(html).toContain("未配置连接");
-		const link = /<a[^>]*href="\/settings"[^>]*>[^<]*未配置连接/;
+		expect(html).toContain("未配置模型连接 · 去设置");
+		expect(html).toContain("⚠");
+		// Prominent button-styled warning link using palette tokens and 44px min height.
+		const link =
+			/<a[^>]*href="\/settings"[^>]*class="[^"]*inline-flex[^"]*min-h-11[^"]*items-center[^"]*gap-2[^"]*rounded-sm[^"]*bg-primary-strong[^"]*text-primary-foreground[^"]*"[^>]*>[\s\S]*?未配置模型连接 · 去设置[\s\S]*?<\/a>/;
 		expect(html).toMatch(link);
+	});
+
+	it("renders the unconfigured button-styled warning link in image mode", () => {
+		const originalSearch = window.location.search;
+		window.history.pushState({}, "", "/?mode=images");
+		try {
+			const html = workspaceHtml();
+			expect(html).toContain("未配置模型连接 · 去设置");
+			expect(html).toContain("⚠");
+			const link =
+				/<a[^>]*href="\/settings"[^>]*class="[^"]*inline-flex[^"]*min-h-11[^"]*items-center[^"]*gap-2[^"]*rounded-sm[^"]*bg-primary-strong[^"]*text-primary-foreground[^"]*"[^>]*>[\s\S]*?未配置模型连接 · 去设置[\s\S]*?<\/a>/;
+			expect(html).toMatch(link);
+		} finally {
+			window.history.pushState({}, "", originalSearch || "/");
+		}
 	});
 });
 
@@ -269,6 +294,32 @@ describe("language rows stay on one line at 390px", () => {
 		const html = workspaceHtml();
 		// `shrink-0` stops a chip from being squeezed into a second line.
 		expect(html).toContain("shrink-0");
+	});
+
+	it("centers chip text vertically across all language chips", () => {
+		const html = workspaceHtml();
+		// Every language chip button (source and target, including the md-only third chip)
+		// must carry items-center so the label sits vertically centered.
+		const sections = [
+			...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/g),
+		].map((match) => match[1]);
+		expect(sections.length).toBe(2);
+
+		for (const section of sections) {
+			const languageRow = section.match(
+				/<div class="flex flex-wrap items-center gap-2">([\s\S]*?)<\/div>/,
+			)?.[1];
+			expect(languageRow).toBeDefined();
+
+			const buttons = [
+				...(languageRow?.matchAll(/<button\b[^>]*class="([^"]*)"[^>]*>/g) ??
+					[]),
+			].map((m) => m[1]);
+			expect(buttons.length).toBeGreaterThanOrEqual(5);
+			for (const cls of buttons) {
+				expect(cls).toContain("items-center");
+			}
+		}
 	});
 });
 
