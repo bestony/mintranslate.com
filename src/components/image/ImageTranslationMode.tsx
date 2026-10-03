@@ -28,6 +28,8 @@ import {
 	SLOW_RUN_THRESHOLD_MS,
 } from "#/lib/image";
 import { logger } from "#/lib/logger";
+import { BuiltinDownloadNotice } from "../translation/BuiltinDownloadNotice";
+import { useBuiltinDownload } from "../translation/useBuiltinDownload";
 import { ImageDropZone } from "./ImageDropZone";
 import { ImageResultView } from "./ImageResultView";
 
@@ -94,6 +96,7 @@ export function ImageTranslationMode({
 		{ width: number; height: number } | undefined
 	>(undefined);
 	const [waitedPast, setWaitedPast] = useState(false);
+	const pendingFile = useRef<File | undefined>(undefined);
 
 	const startedAt = useRef<number | undefined>(undefined);
 	/** Submission counter, used as the dedupe key when content hashing is unavailable. */
@@ -112,6 +115,11 @@ export function ImageTranslationMode({
 			}),
 		[builtinLanguageModel],
 	);
+	const imageIntentKey = `${connection?.id ?? ""}\u0000${sourceLang}\u0000${targetLang}`;
+	const builtinDownload = useBuiltinDownload({
+		intentKey: imageIntentKey,
+		languageModel: builtinLanguageModel,
+	});
 
 	/**
 	 * Terms to inject, resolved once per run.
@@ -169,6 +177,8 @@ export function ImageTranslationMode({
 
 	const submit = useCallback(
 		async (file: File) => {
+			pendingFile.current = file;
+			builtinDownload.reset();
 			setNotice(undefined);
 			setRawText(undefined);
 			setGlossaryCount(0);
@@ -303,6 +313,16 @@ export function ImageTranslationMode({
 
 				onResult?.(outcome.regions);
 			} catch (error) {
+				if (
+					builtinDownload.offer(error, imageIntentKey, () => {
+						const retryFile = pendingFile.current;
+						if (retryFile !== undefined) void submit(retryFile);
+					})
+				) {
+					setStage("failed");
+					setNotice(undefined);
+					return;
+				}
 				logger.warn("image.mode.failed", {
 					requestId,
 					reason: error instanceof Error ? error.message : String(error),
@@ -327,6 +347,8 @@ export function ImageTranslationMode({
 			targetLang,
 			targetLanguageLabel,
 			translator,
+			builtinDownload,
+			imageIntentKey,
 		],
 	);
 
@@ -351,6 +373,11 @@ export function ImageTranslationMode({
 					{notice}
 				</p>
 			)}
+
+			<BuiltinDownloadNotice
+				state={builtinDownload.state}
+				onActivate={() => void builtinDownload.activate()}
+			/>
 
 			{progress.busy && (
 				<div className="mt-4 flex flex-wrap items-center gap-4 text-sm">

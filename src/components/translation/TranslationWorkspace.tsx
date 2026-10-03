@@ -92,11 +92,13 @@ import {
 	SpeechRateControl,
 	useSpeech,
 } from "../output/SpeechControls";
+import { BuiltinDownloadNotice } from "./BuiltinDownloadNotice";
 import {
 	LanguagePicker,
 	languageChipLabel,
 	selectedSourceLanguage,
 } from "./LanguagePicker";
+import { useBuiltinDownload } from "./useBuiltinDownload";
 
 /**
  * How the modifier key is shown for the current platform.
@@ -222,17 +224,24 @@ export function shouldShowGlossarySummary(
 /** Select an explicit connection, or the built-in channel for the current mode. */
 export function selectWorkspaceConnection(
 	activeConnection: Connection | undefined,
-	usableConnections: readonly Connection[],
+	connections: readonly Connection[],
 	mode: WorkspaceMode,
 ): Connection | undefined {
-	return (
-		activeConnection ??
-		usableConnections.find((connection) =>
-			mode === "images"
-				? connection.provider === "builtin-multimodal"
-				: connection.provider === "builtin-translator",
-		)
-	);
+	const builtinCandidate = connections.find((connection) => {
+		if (mode === "images" && connection.provider !== "builtin-multimodal")
+			return false;
+		if (mode !== "images" && connection.provider !== "builtin-translator")
+			return false;
+		if (connection.status === undefined || connection.status === "ok")
+			return true;
+		// Readiness is pair/language scoped. A failed fixed-pair probe must not hide
+		// the workspace action for the concrete pair the user is translating.
+		return (
+			connection.statusDetail?.includes("下载") === true ||
+			connection.statusDetail?.includes("语言对") === true
+		);
+	});
+	return activeConnection ?? builtinCandidate;
 }
 
 export function TranslationWorkspace() {
@@ -313,7 +322,7 @@ export function TranslationWorkspace() {
 
 	const active = selectWorkspaceConnection(
 		store.activeConnection,
-		store.usableConnections,
+		store.connections,
 		mode,
 	);
 	const activeId = active?.id;
@@ -359,6 +368,12 @@ export function TranslationWorkspace() {
 		() => createBuiltinLanguageModelClient(),
 		[],
 	);
+	const textIntentKey = `${active?.id ?? ""}\u0000${sourceLang}\u0000${targetLang}\u0000${text}`;
+	const builtinDownload = useBuiltinDownload({
+		intentKey: textIntentKey,
+		translator: builtinTranslator,
+		languageModel: builtinLanguageModel,
+	});
 
 	/**
 	 * Report a language change.
@@ -396,6 +411,9 @@ export function TranslationWorkspace() {
 			}),
 		[builtinLanguageModel, builtinTranslator],
 	);
+	const controllerRef = useRef<
+		ReturnType<typeof createTranslationController> | undefined
+	>(undefined);
 
 	// Pick up the style chosen in settings. Read once: the workspace does not own
 	// these values, it only consumes them.
@@ -535,6 +553,8 @@ export function TranslationWorkspace() {
 		analytics,
 		reportSubmit,
 		persistHistory,
+		builtinDownload,
+		textIntentKey,
 	};
 	const live = useRef(liveValues);
 	// Declared before the effect that feeds the controller, so a request started
@@ -554,7 +574,8 @@ export function TranslationWorkspace() {
 						: matchTerms(text, pair),
 				callbacks: {
 					onStart: (_requestId, input) => {
-						const { reportSubmit } = live.current;
+						const { reportSubmit, builtinDownload } = live.current;
+						builtinDownload.reset();
 						// Detection belongs to the current input. Clear the previous result
 						// before a new request so the chip cannot show stale language data.
 						detectedRef.current = undefined;
@@ -656,7 +677,18 @@ export function TranslationWorkspace() {
 						});
 					},
 					onFailure: (_id, error) => {
-						const { active, analytics } = live.current;
+						const { active, analytics, builtinDownload, textIntentKey } =
+							live.current;
+						if (
+							builtinDownload.offer(error, textIntentKey, () =>
+								controllerRef.current?.retry(),
+							)
+						) {
+							setPending(false);
+							setFailure(undefined);
+							setOutput("");
+							return;
+						}
 						// The input is deliberately left untouched, and any previous
 						// successful output stays until a new success replaces it.
 						setPending(false);
@@ -791,6 +823,7 @@ export function TranslationWorkspace() {
 			}),
 		[caller],
 	);
+	controllerRef.current = controller;
 
 	// Abandon pending and in-flight work when the workspace unmounts.
 	useEffect(() => () => controller.cancel(), [controller]);
@@ -1270,6 +1303,11 @@ export function TranslationWorkspace() {
 						{pending && output === "" && (
 							<p className="text-muted-foreground text-sm">翻译中…</p>
 						)}
+
+						<BuiltinDownloadNotice
+							state={builtinDownload.state}
+							onActivate={() => void builtinDownload.activate()}
+						/>
 
 						{failure !== undefined && (
 							<div className="rounded-md border border-border bg-surface p-4 text-sm">
