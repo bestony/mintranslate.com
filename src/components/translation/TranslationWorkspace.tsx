@@ -28,7 +28,11 @@ import {
 	attributeFailure,
 	type FailureAttribution,
 } from "#/lib/connections/attribution";
-import type { Connection, ProviderId } from "#/lib/connections/model";
+import {
+	type Connection,
+	isBuiltinProvider,
+	type ProviderId,
+} from "#/lib/connections/model";
 import { createModelCaller } from "#/lib/connections/model-caller";
 import { CUSTOM_INSTRUCTION_KEY, STYLE_KEY } from "#/lib/connections/storage";
 import { useConnectionStore } from "#/lib/connections/store";
@@ -302,8 +306,11 @@ export function TranslationWorkspace() {
 	 */
 	const byokConfigured = useRef(false);
 	useEffect(() => {
-		byokConfigured.current = store.activeId !== null;
-	}, [store.activeId]);
+		byokConfigured.current = store.connections.some(
+			(connection) =>
+				connection.status === "ok" && !isBuiltinProvider(connection.provider),
+		);
+	}, [store.connections]);
 	const analytics = useMemo(
 		() => createAnalytics({ byokConfigured: () => byokConfigured.current }),
 		[],
@@ -661,7 +668,8 @@ export function TranslationWorkspace() {
 						// signal. The host is hashed for custom endpoints by `reportedHost`.
 						if (
 							attribution.type === "cors_or_network" &&
-							active !== undefined
+							active !== undefined &&
+							!isBuiltinProvider(active.provider)
 						) {
 							void reportedHost(
 								active.endpoint,

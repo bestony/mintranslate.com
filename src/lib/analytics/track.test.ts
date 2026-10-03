@@ -220,6 +220,19 @@ describe("track entry point", () => {
 		expect(sent[0].params.model).toBeUndefined();
 	});
 
+	it("does not emit CORS diagnostics for built-in providers", () => {
+		const { analytics, sent } = harness({ id: "G-TEST123" });
+		analytics.track("cors_blocked", {
+			provider: "builtin-translator",
+			endpoint_host: "",
+		});
+		analytics.track("cors_blocked", {
+			provider: "builtin-multimodal",
+			endpoint_host: "",
+		});
+		expect(sent).toHaveLength(0);
+	});
+
 	it("is a no-op without an identifier", () => {
 		const { analytics, sent } = harness();
 		for (const name of ANALYTICS_EVENT_NAMES) {

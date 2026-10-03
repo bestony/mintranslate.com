@@ -20,6 +20,7 @@
 
 import { createLatestCall } from "../call-control/latest-call";
 import { throttle } from "../call-control/throttle";
+import { isBuiltinProvider } from "../connections/model";
 import { logger } from "../logger";
 import {
 	type AnalyticsStorage,
@@ -239,6 +240,11 @@ export function createAnalytics(context: AnalyticsContext): Analytics {
 	return {
 		track(event, params) {
 			if (!usable()) return;
+			if (
+				event === "cors_blocked" &&
+				isBuiltinProvider((params as { readonly provider?: string }).provider)
+			)
+				return;
 
 			try {
 				const payload = sanitizeValues(

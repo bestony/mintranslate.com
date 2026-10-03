@@ -122,11 +122,6 @@ export function ConnectionForm({
 	testController,
 }: ConnectionFormProps) {
 	const [revealKey, setRevealKey] = useState(false);
-	/** Analytics entry point for configuration and connection-test events. */
-	const analytics = useMemo(
-		() => createAnalytics({ byokConfigured: () => true }),
-		[],
-	);
 	const [testing, setTesting] = useState(false);
 	const [activatingBuiltin, setActivatingBuiltin] = useState(false);
 	const [builtinProgress, setBuiltinProgress] = useState<number | undefined>(
@@ -148,6 +143,14 @@ export function ConnectionForm({
 
 	const preset = presetFor(connection.provider);
 	const builtin = isBuiltinProvider(connection.provider);
+	/** Analytics entry point for configuration and connection-test events. */
+	const analytics = useMemo(
+		() =>
+			createAnalytics({
+				byokConfigured: () => connection.status === "ok" && !builtin,
+			}),
+		[builtin, connection.status],
+	);
 	const labelClass = "mt-2 block font-medium text-sm";
 	// `min-h-11` gives every text field a 44px touch target. Focus styling is left
 	// to the global `:focus-visible` ring: overriding it with a border colour
