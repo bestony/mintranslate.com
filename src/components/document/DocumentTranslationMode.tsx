@@ -317,6 +317,7 @@ export function DocumentTranslationMode({
 
 	const submit = useCallback(
 		async (file: File) => {
+			let storageWriteStarted = false;
 			clearDownload();
 			setNotice(undefined);
 			setEmpty(false);
@@ -368,6 +369,7 @@ export function DocumentTranslationMode({
 					chunks: parsed.chunks.map((chunk) => ({ chunk })),
 					now: Date.now(),
 				});
+				storageWriteStarted = true;
 				await currentStore.dropStaleSources(created.id);
 				await currentStore.save(created);
 				await currentStore.saveSource(created.id, bytes);
@@ -385,10 +387,15 @@ export function DocumentTranslationMode({
 				});
 				await runTask(created, bytes, parsed.pdf, currentStore);
 			} catch (error) {
-				logger.warn("document.ui.parse-failed", {
+				logger.warn("document.ui.submit-failed", {
+					phase: storageWriteStarted ? "storage" : "parse",
 					reason: error instanceof Error ? error.message : String(error),
 				});
-				setNotice(unparsableReason(file.name));
+				setNotice(
+					storageWriteStarted
+						? "本地任务存储写入失败，无法保存进度，请重试。"
+						: unparsableReason(file.name),
+				);
 			}
 		},
 		[

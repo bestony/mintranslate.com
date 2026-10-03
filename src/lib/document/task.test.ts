@@ -26,7 +26,11 @@ import {
 	transition,
 	wasCancelled,
 } from "./task";
-import { createTaskRecord, openDocumentTaskStore } from "./task-store";
+import {
+	createDocumentTaskStore,
+	createTaskRecord,
+	openDocumentTaskStore,
+} from "./task-store";
 
 /** Chunks for a task, optionally with some already translated. */
 function chunks(done: number, total = 3): TranslatedChunk[] {
@@ -273,6 +277,55 @@ describe("source lifetime", () => {
 });
 
 describe("persistence", () => {
+	it("waits for write commit and rejects an aborted transaction", async () => {
+		type FakeTransaction = {
+			error: DOMException | null;
+			onabort: (() => void) | null;
+			oncomplete: (() => void) | null;
+			onerror: (() => void) | null;
+		};
+		let lastTransaction: FakeTransaction | undefined;
+		const database = {
+			transaction: () => {
+				const request = {
+					result: undefined,
+					onerror: null as (() => void) | null,
+					onsuccess: null as (() => void) | null,
+				};
+				const transaction: FakeTransaction & {
+					objectStore: () => { put: () => typeof request };
+				} = {
+					error: null,
+					onabort: null,
+					oncomplete: null,
+					onerror: null,
+					objectStore: () => ({ put: () => request }),
+				};
+				lastTransaction = transaction;
+				queueMicrotask(() => request.onsuccess?.());
+				return transaction;
+			},
+		} as unknown as IDBDatabase;
+		const store = createDocumentTaskStore(database);
+
+		let settled = false;
+		const pending = store.save(record({ id: "commit-wait" })).then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		lastTransaction?.oncomplete?.();
+		await pending;
+		expect(settled).toBe(true);
+
+		const rejected = store.save(record({ id: "commit-abort" }));
+		await Promise.resolve();
+		if (lastTransaction === undefined) throw new Error("missing transaction");
+		lastTransaction.error = new DOMException("quota", "QuotaExceededError");
+		lastTransaction.onabort?.();
+		await expect(rejected).rejects.toThrow("quota");
+	});
+
 	it("saves and loads a task", async () => {
 		const store = await openDocumentTaskStore();
 		expect(store).toBeDefined();

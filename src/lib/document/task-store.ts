@@ -87,6 +87,17 @@ function requestAsPromise<T>(request: IDBRequest<T>): Promise<T> {
 	});
 }
 
+/** Resolve only after a transaction commits, or reject when it aborts. */
+function transactionAsPromise(transaction: IDBTransaction): Promise<void> {
+	return new Promise((resolve, reject) => {
+		const fail = () =>
+			reject(transaction.error ?? new Error("IndexedDB transaction failed"));
+		transaction.oncomplete = () => resolve();
+		transaction.onerror = fail;
+		transaction.onabort = fail;
+	});
+}
+
 /** Persistence surface for tasks. */
 export interface DocumentTaskStore {
 	save(record: DocumentTaskRecord): Promise<void>;
@@ -112,8 +123,12 @@ export function createDocumentTaskStore(
 		run: (store: IDBObjectStore) => IDBRequest<T>,
 	): Promise<T> {
 		const transaction = database.transaction(name, mode);
-		const result = await requestAsPromise(run(transaction.objectStore(name)));
-		return result;
+		const request = run(transaction.objectStore(name));
+		if (mode === "readwrite") {
+			await transactionAsPromise(transaction);
+			return request.result;
+		}
+		return requestAsPromise(request);
 	}
 
 	return {
