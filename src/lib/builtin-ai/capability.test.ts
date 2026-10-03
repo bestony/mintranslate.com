@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-
+import type { BuiltinLanguageModelApi } from "./capability";
 import {
 	deriveBuiltinConnectionStatus,
 	detectBuiltinCapabilities,
@@ -8,6 +8,7 @@ import {
 	queryTranslatorAvailability,
 	validatePromptLanguagePair,
 } from "./capability";
+import { createBuiltinLanguageModelClient } from "./language-model";
 
 describe("Built-in AI capability detection", () => {
 	it("only inspects API presence", () => {
@@ -60,15 +61,53 @@ describe("Built-in AI capability detection", () => {
 			api: { availability, create: vi.fn() },
 		});
 		expect(result).toEqual({ state: "available" });
-		expect(availability).toHaveBeenCalledWith(
-			expect.objectContaining({
-				language: "ja",
-				expectedInputs: [{ type: "text" }, { type: "image" }],
-				expectedOutputs: [{ type: "text" }],
-			}),
-		);
+		expect(availability).toHaveBeenCalledWith({
+			expectedInputs: [
+				{ type: "text", languages: ["en", "ja", "es", "de", "fr"] },
+				{ type: "image" },
+			],
+			expectedOutputs: [{ type: "text", languages: ["ja"] }],
+		});
 		expect(fetchSpy).not.toHaveBeenCalled();
 		fetchSpy.mockRestore();
+	});
+
+	it("uses the same language options for readiness and session creation", async () => {
+		const availability = vi.fn().mockResolvedValue("available");
+		const create = vi.fn().mockResolvedValue({
+			prompt: vi.fn().mockResolvedValue("ok"),
+			promptStreaming: vi.fn(),
+			destroy: vi.fn(),
+		});
+		const api = { availability, create } as unknown as BuiltinLanguageModelApi;
+
+		await queryLanguageModelAvailability("ja", { api });
+		const client = createBuiltinLanguageModelClient({ api });
+		await client.prompt({ text: "translate" }, { targetLanguage: "ja" });
+
+		const availabilityOptions = availability.mock.calls[0]?.[0];
+		const createOptions = create.mock.calls[0]?.[0];
+		expect(availabilityOptions).toEqual(
+			expect.objectContaining({
+				expectedInputs: [
+					expect.objectContaining({
+						type: "text",
+						languages: expect.any(Array),
+					}),
+					{ type: "image" },
+				],
+				expectedOutputs: [
+					expect.objectContaining({ type: "text", languages: ["ja"] }),
+				],
+			}),
+		);
+		expect(availabilityOptions).not.toHaveProperty("language");
+		expect(createOptions.expectedInputs).toEqual(
+			availabilityOptions.expectedInputs,
+		);
+		expect(createOptions.expectedOutputs).toEqual(
+			availabilityOptions.expectedOutputs,
+		);
 	});
 
 	it("rejects Prompt API languages before a readiness call", async () => {

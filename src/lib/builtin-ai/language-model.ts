@@ -12,6 +12,7 @@ import {
 	type BuiltinLanguageModelApi,
 	type BuiltinLanguageModelSession,
 	type BuiltinReadiness,
+	builtinLanguageModelOptions,
 	queryLanguageModelAvailability,
 } from "./capability";
 import { monitorBuiltinDownload } from "./monitor";
@@ -114,8 +115,6 @@ export function createBuiltinLanguageModelClient(
 	options: {
 		readonly api?: BuiltinLanguageModelApi;
 		readonly scope?: BuiltinApiScope;
-		readonly expectedInputs?: readonly Record<string, unknown>[];
-		readonly expectedOutputs?: readonly Record<string, unknown>[];
 		readonly onDownloadProgress?: (progress: number) => void;
 	} = {},
 ): BuiltinLanguageModelClient {
@@ -159,13 +158,7 @@ export function createBuiltinLanguageModelClient(
 				: []),
 		].join("\n\n");
 		const created = await api.create({
-			expectedInputs: options.expectedInputs ?? [
-				{ type: "text", languages: ["en", "ja", "es", "de", "fr"] },
-				{ type: "image" },
-			],
-			expectedOutputs: options.expectedOutputs ?? [
-				{ type: "text", languages: ["en", "ja", "es", "de", "fr"] },
-			],
+			...builtinLanguageModelOptions(createOptions.targetLanguage),
 			...(systemInstruction !== "" && {
 				initialPrompts: [
 					{
